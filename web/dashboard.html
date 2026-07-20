@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Finance Bot — התיק שלי</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="card dashboard-card">
+    <!-- Shown until this web login is linked to a Telegram account -->
+    <div id="link-section">
+      <h1>חיבור לחשבון הטלגרם</h1>
+      <p>פתח את הבוט בטלגרם, שלח <code>/link</code>, והזן כאן את הקוד שקיבלת (תקף ל-10 דקות).</p>
+      <label for="link-code">קוד חיבור</label>
+      <input id="link-code" type="text" placeholder="למשל: fAOjFi-w">
+      <button id="link-btn">חבר חשבון</button>
+      <div class="error" id="link-error"></div>
+    </div>
+
+    <!-- Shown once linked -->
+    <div id="dashboard-section" class="hidden">
+      <h1>🥧 התיק שלי</h1>
+
+      <div class="stats">
+        <div class="stat">
+          <div class="value" id="stat-value">—</div>
+          <div class="label">שווי נוכחי</div>
+        </div>
+        <div class="stat">
+          <div class="value" id="stat-cost">—</div>
+          <div class="label">עלות כוללת</div>
+        </div>
+        <div class="stat">
+          <div class="value" id="stat-gain">—</div>
+          <div class="label">רווח/הפסד</div>
+        </div>
+        <div class="stat">
+          <div class="value" id="stat-day-change">—</div>
+          <div class="label">שינוי היום</div>
+        </div>
+      </div>
+
+      <canvas id="pie-chart" width="400" height="400"></canvas>
+      <div id="empty-msg" class="hidden" style="text-align:center; color:#94a3b8; margin-top:20px;">
+        התיק ריק, או שעדיין לא הופק תרשים. שלח <code>/cake</code> בבוט כדי לעדכן.
+      </div>
+      <div class="updated-at" id="updated-at"></div>
+
+      <div id="holdings-list" class="holdings-list"></div>
+
+      <div class="section-divider"></div>
+      <h2>🧮 סימולטור מס</h2>
+      <p class="hint">בדיקת "מה אם" בלבד — שום דבר לא נמכר בפועל. הערכה גסה של מס רווחי הון בישראל (25% שטוח), לא ייעוץ מס.</p>
+      <label for="tax-ticker">טיקר</label>
+      <select id="tax-ticker"></select>
+      <label for="tax-qty">כמות למכירה</label>
+      <input id="tax-qty" type="number" step="any" placeholder="לדוגמה: 5">
+      <label for="tax-price">מחיר מכירה ליחידה</label>
+      <input id="tax-price" type="number" step="any" placeholder="ברירת מחדל: המחיר הנוכחי">
+      <button id="tax-sim-btn">חשב מס משוער</button>
+      <div id="tax-result" class="result-box hidden"></div>
+
+      <div class="section-divider"></div>
+      <h2>🤖 AI — המלצה ושאלות</h2>
+      <p class="hint">התשובה מופקת ע"י הבוט בטלגרם (כולל חיפוש חדשות ברשת) ועשויה לקחת עד כמה שניות.</p>
+      <button id="ai-recommend-btn" class="secondary">קבל המלצת AI קצרה</button>
+      <label for="ai-question">או שאל שאלה חופשית על התיק שלך</label>
+      <input id="ai-question" type="text" placeholder="למשל: כמה שווה התיק שלי היום?">
+      <button id="ai-ask-btn">שאל</button>
+      <div id="ai-answer" class="result-box hidden"></div>
+
+      <div class="section-divider"></div>
+      <h2>📜 היסטוריית עסקאות</h2>
+      <div id="tx-list" class="tx-list"></div>
+
+      <button class="secondary" id="logout-btn">התנתק</button>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <script type="module" src="dashboard.js"></script>
+</body>
+</html>

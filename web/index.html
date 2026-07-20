@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Finance Bot — התחברות</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="card">
+    <h1 id="form-title">התחברות</h1>
+
+    <label for="email">אימייל</label>
+    <input id="email" type="email" autocomplete="email" placeholder="you@example.com">
+
+    <label for="password">סיסמה</label>
+    <input id="password" type="password" autocomplete="current-password" placeholder="••••••••">
+
+    <button id="submit-btn">התחבר</button>
+    <div class="error" id="error-msg"></div>
+
+    <div class="toggle-link">
+      <span id="toggle-text">אין לך חשבון? </span><a id="toggle-link">הרשמה</a>
+    </div>
+  </div>
+
+  <script type="module" src="auth.js"></script>
+</body>
+</html>

@@ -22,29 +22,42 @@ def finance_engine_globes(search_term):
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
             viewport={'width': 1920, 'height': 1080}
         )
+        # Globes now shows a "Funding Choices" cookie-consent overlay
+        # (fc-consent-root) that intercepts clicks on the search icon and the
+        # results row further down, causing every click to retry for 60s
+        # before timing out. It's injected asynchronously (a fixed-delay
+        # removal right after page load raced it and sometimes lost), and
+        # clicking its "consent" button was selector-fragile (text/markup
+        # varies) — so instead, run a MutationObserver from the moment the
+        # page starts loading that strips the overlay the instant it appears,
+        # for the whole page lifetime. Removes the race entirely.
+        context.add_init_script("""
+            (function() {
+                function stripConsent() {
+                    document.querySelectorAll('.fc-consent-root').forEach(el => el.remove());
+                }
+                new MutationObserver(stripConsent).observe(document.documentElement, {childList: true, subtree: true});
+                stripConsent();
+            })();
+        """)
         page = context.new_page()
         page.set_default_timeout(60000)
 
         try:
             print_heb(f"🌐 מתחבר לגלובס ומחפש: {search_term}...")
             page.goto('https://www.globes.co.il/portal/', wait_until='domcontentloaded')
-
-            # Globes now shows a "Funding Choices" cookie-consent overlay
-            # (fc-consent-root) that intercepts clicks on the results row
-            # further down, causing every click to retry for 60s before
-            # timing out. Dismiss it if present; if it never shows up (or
-            # already got dismissed), just move on.
-            try:
-                page.click('.fc-cta-consent, .fc-button.fc-cta-consent', timeout=5000)
-            except Exception:
-                pass
-
             page.wait_for_selector('.navWmainI.search')
-            page.click('.navWmainI.search')
-            
+            # force=True: the consent overlay removal above doesn't reliably
+            # win the race against Globes' own script re-inserting it, and
+            # debugging exactly why is a time sink for what's a fallback path
+            # anyway — force bypasses Playwright's "is this element actually
+            # clickable" check entirely, clicking regardless of what's
+            # visually on top of it.
+            page.click('.navWmainI.search', force=True)
+
             search_input = page.locator('#query_for_site')
-            search_input.click()
-            search_input.type(search_term, delay=200) 
+            search_input.click(force=True)
+            search_input.type(search_term, delay=200)
             
             print_heb("⏳ מנתח את התוצאות...")
             page.wait_for_selector('.C_divHiddenSearch.opened', timeout=15000)
@@ -72,7 +85,7 @@ def finance_engine_globes(search_term):
                 return None, None, None, None
 
             print_heb(f"✅ מיידע: הבוט זיהה ובחר אוטומטית בנייר:\n   [{asset_name}]")
-            selected_res.click()
+            selected_res.click(force=True)
             
             time.sleep(3)
             page.wait_for_load_state('domcontentloaded')

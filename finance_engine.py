@@ -28,7 +28,17 @@ def finance_engine_globes(search_term):
         try:
             print_heb(f"🌐 מתחבר לגלובס ומחפש: {search_term}...")
             page.goto('https://www.globes.co.il/portal/', wait_until='domcontentloaded')
-            
+
+            # Globes now shows a "Funding Choices" cookie-consent overlay
+            # (fc-consent-root) that intercepts clicks on the results row
+            # further down, causing every click to retry for 60s before
+            # timing out. Dismiss it if present; if it never shows up (or
+            # already got dismissed), just move on.
+            try:
+                page.click('.fc-cta-consent, .fc-button.fc-cta-consent', timeout=5000)
+            except Exception:
+                pass
+
             page.wait_for_selector('.navWmainI.search')
             page.click('.navWmainI.search')
             

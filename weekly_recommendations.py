@@ -2,6 +2,8 @@
 user with a saved address a plain-language portfolio update plus an AI-written,
 news-informed note. Not run by the Telegram bot process itself."""
 
+import html
+
 import connect_firebase
 import portfolio_service
 import ai_recommendation
@@ -15,11 +17,19 @@ DISCLAIMER = (
 
 
 def build_email_html(valuation: dict, recommendation_text: str) -> str:
+    # Names/tickers can originate from an imported spreadsheet, and the
+    # recommendation text from an LLM — escape all of it before interpolating
+    # into HTML, same as web/dashboard.js does for the same untrusted-content
+    # reason.
     row_parts = []
     for ticker, h in valuation["holdings"].items():
+        name = h.get("name")
+        ticker_html = f"<bdi>{html.escape(ticker)}</bdi>"
+        label = f"<bdi>{html.escape(name)}</bdi> ({ticker_html})" if name else ticker_html
         value_str = f"{h['market_value']:.2f}" if h["market_value"] is not None else "N/A"
-        row_parts.append(f"<tr><td>{ticker}</td><td>{h['quantity']}</td><td>{value_str}</td></tr>")
+        row_parts.append(f"<tr><td>{label}</td><td>{h['quantity']}</td><td>{value_str}</td></tr>")
     holding_rows = "".join(row_parts)
+    recommendation_text = html.escape(recommendation_text)
     return f"""
     <div style="font-family: Arial, sans-serif; direction: rtl; text-align: right;">
       <h2>ההמלצה השבועית שלך 📈</h2>

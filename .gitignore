@@ -6,3 +6,4 @@ __pycache__/
 .yfinance_cache/
 .firebase/
 *.log
+.vscode/

@@ -34,6 +34,8 @@ def build_email_html(valuation: dict, recommendation_text: str) -> str:
     <div style="font-family: Arial, sans-serif; direction: rtl; text-align: right;">
       <h2>ההמלצה השבועית שלך 📈</h2>
       <p><b>שווי כולל:</b> {valuation['total_value']:.2f}</p>
+      <p><b>מזומן פנוי:</b> {valuation.get('cash_balance', 0):.2f}</p>
+      <p><b>שווי חשבון כולל:</b> {valuation.get('account_total_value', valuation['total_value']):.2f}</p>
       <p><b>עלות כוללת:</b> {valuation['total_cost']:.2f}</p>
       <p><b>רווח/הפסד:</b> {valuation['total_gain_loss']:.2f} ({valuation['total_gain_loss_pct']:.1f}%)</p>
       <table border="1" cellpadding="6" style="border-collapse: collapse;">
@@ -65,7 +67,8 @@ def main():
 
             holdings_for_search = [(t, h.get("name")) for t, h in valuation["holdings"].items()]
             market_context = ai_recommendation.search_market_context(holdings_for_search)
-            recommendation = ai_recommendation.generate_recommendation(valuation, market_context)
+            profile = connect_firebase.get_user_profile(uid)
+            recommendation = ai_recommendation.generate_recommendation(valuation, market_context, profile)
 
             html = build_email_html(valuation, recommendation)
             status = email_service.send_email(email, "ההמלצה השבועית שלך 📈", html)

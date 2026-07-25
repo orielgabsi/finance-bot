@@ -1,68 +1,213 @@
 rules_version = '2';
 
-// This app has two writers: the Telegram bot (Firebase Admin SDK — bypasses
-// these rules entirely) and the website (Firebase Auth + client SDK — bound
-// by these rules). The website is READ-ONLY: all portfolio writes happen
-// through the bot, so these rules never need to trust arbitrary client input
-// for financial data, only for the account-linking handshake below.
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // One-time codes the bot generates via /link. High-entropy random IDs
-    // (see connect_firebase.create_link_code) make guessing infeasible, so a
-    // direct-ID "get" is safe to allow; listing/querying all codes is not.
-    match /link_codes/{code} {
-      allow get: if request.auth != null;
-      allow list: if false;
-      allow write: if false; // only the bot (Admin SDK) creates these
+    function signedIn() {
+      return request.auth != null;
     }
 
-    // Proves a signed-in web user controls a given Telegram account: the
-    // client submits the code it read from link_codes, and the write is only
-    // accepted if telegram_id/expiry match what's actually stored there.
-    match /account_links/{uid} {
-      allow read: if request.auth != null && request.auth.uid == uid;
-      allow create: if request.auth != null
-        && request.auth.uid == uid
-        && request.resource.data.telegram_id ==
-             get(/databases/$(database)/documents/link_codes/$(request.resource.data.used_code)).data.telegram_id
-        && get(/databases/$(database)/documents/link_codes/$(request.resource.data.used_code)).data.expires_at > request.time;
-      allow update, delete: if false; // a link, once made, can't be reassigned from the client
-    }
-
-    // Portfolio data. Read-only from the web, and only for the Telegram
-    // account this signed-in user has linked to.
-    match /users/{telegramId} {
-      allow read: if request.auth != null
+    function ownsTelegramAccount(telegramId) {
+      return signedIn()
         && exists(/databases/$(database)/documents/account_links/$(request.auth.uid))
         && get(/databases/$(database)/documents/account_links/$(request.auth.uid)).data.telegram_id == telegramId;
-      allow write: if false; // bot only, via the Admin SDK
+    }
+
+    function validProfile(profile) {
+      return profile is map
+        && profile.keys().hasOnly([
+          'display_name', 'risk_profile', 'investment_horizon',
+          'investment_goal', 'base_currency'
+        ])
+        && profile.display_name is string
+        && profile.display_name.size() <= 80
+        && profile.risk_profile in ['conservative', 'balanced', 'aggressive']
+        && profile.investment_horizon in ['short', 'medium', 'long']
+        && profile.investment_goal is string
+        && profile.investment_goal.size() <= 200
+        && profile.base_currency in ['ILS', 'USD', 'EUR'];
+    }
+
+    function validFinancialGoal(goal) {
+      return goal is map
+        && goal.keys().hasOnly(['name', 'target_amount', 'updated_at'])
+        && goal.name is string
+        && goal.name.size() > 0
+        && goal.name.size() <= 80
+        && goal.target_amount is number
+        && goal.target_amount > 0
+        && goal.target_amount <= 1000000000
+        && goal.updated_at is timestamp;
+    }
+
+    function validFinancialAsset(asset) {
+      return asset.asset_type == 'gemel_investment'
+        && asset.provider == 'אלטשולר שחם'
+        && asset.track_id in ['7799', '14864']
+        && asset.name is string
+        && asset.name.size() > 0
+        && asset.name.size() <= 120
+        && asset.reported_balance is number
+        && asset.reported_balance > 0
+        && asset.reported_balance <= 1000000000
+        && asset.balance_as_of is string
+        && asset.balance_as_of.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && asset.monthly_contribution is number
+        && asset.monthly_contribution >= 0
+        && asset.monthly_contribution <= 10000000
+        && asset.total_contributed is number
+        && asset.total_contributed >= 0
+        && asset.total_contributed <= 1000000000
+        && asset.auto_update is bool;
+    }
+
+    // Linking is an atomic two-write handshake: the browser consumes a code
+    // and creates its account link in the same batch. A consumed code cannot
+    // be reused by another Firebase account.
+    match /link_codes/{code} {
+      allow get: if signedIn();
+      allow list, create, delete: if false;
+      allow update: if signedIn()
+        && resource.data.get('used', false) == false
+        && resource.data.expires_at > request.time
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['used', 'used_by', 'used_at'])
+        && request.resource.data.used == true
+        && request.resource.data.used_by == request.auth.uid
+        && request.resource.data.used_at == request.time;
+    }
+
+    match /account_links/{uid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow create: if signedIn()
+        && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['telegram_id', 'used_code', 'linked_at'])
+        && request.resource.data.linked_at == request.time
+        && request.resource.data.telegram_id ==
+             getAfter(/databases/$(database)/documents/link_codes/$(request.resource.data.used_code)).data.telegram_id
+        && getAfter(/databases/$(database)/documents/link_codes/$(request.resource.data.used_code)).data.used == true
+        && getAfter(/databases/$(database)/documents/link_codes/$(request.resource.data.used_code)).data.used_by == request.auth.uid
+        && getAfter(/databases/$(database)/documents/link_codes/$(request.resource.data.used_code)).data.expires_at > request.time;
+      allow update, delete: if false;
+    }
+
+    match /users/{telegramId} {
+      allow read: if ownsTelegramAccount(telegramId);
+
+      // The linked website may only manage the user's non-trading settings.
+      // Portfolio, transactions, valuation and AI results remain server-only.
+      allow update: if ownsTelegramAccount(telegramId)
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['cash_balance', 'profile', 'financial_goal'])
+        && (!('cash_balance' in request.resource.data)
+            || (request.resource.data.cash_balance is number
+                && request.resource.data.cash_balance >= 0))
+        && (!('profile' in request.resource.data)
+            || validProfile(request.resource.data.profile))
+        && (!('financial_goal' in request.resource.data)
+            || validFinancialGoal(request.resource.data.financial_goal))
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['financial_goal'])
+            || request.resource.data.financial_goal.updated_at == request.time);
+      allow create, delete: if false;
 
       match /transactions/{transactionId} {
-        allow read: if request.auth != null
-          && exists(/databases/$(database)/documents/account_links/$(request.auth.uid))
-          && get(/databases/$(database)/documents/account_links/$(request.auth.uid)).data.telegram_id == telegramId;
+        allow read: if ownsTelegramAccount(telegramId);
         allow write: if false;
       }
 
-      // The website has no backend of its own, so an AI question is relayed
-      // through Firestore: the site creates a "pending" request here, and the
-      // already-running Telegram bot (Admin SDK, bypasses these rules) picks
-      // it up, computes an answer, and writes status "answered" + the answer
-      // back. The client can create its own request and read it (to see the
-      // answer land), but can never write the answer itself.
+      match /cash_transactions/{transactionId} {
+        allow read: if ownsTelegramAccount(telegramId);
+        allow write: if false;
+      }
+
+      match /analyses/{analysisId} {
+        allow read: if ownsTelegramAccount(telegramId);
+        allow write: if false;
+      }
+
+      match /financial_assets/{assetId} {
+        allow read: if ownsTelegramAccount(telegramId);
+        allow create: if ownsTelegramAccount(telegramId)
+          && request.resource.data.keys().hasOnly([
+            'asset_type', 'provider', 'track_id', 'name', 'reported_balance',
+            'balance_as_of', 'monthly_contribution', 'total_contributed',
+            'auto_update', 'created_at'
+          ])
+          && validFinancialAsset(request.resource.data)
+          && request.resource.data.created_at == request.time;
+        allow update: if ownsTelegramAccount(telegramId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'name', 'reported_balance', 'balance_as_of', 'monthly_contribution',
+            'total_contributed', 'auto_update'
+          ])
+          && validFinancialAsset(request.resource.data);
+        allow delete: if ownsTelegramAccount(telegramId);
+      }
+
+      match /portfolio_requests/{requestId} {
+        allow read: if ownsTelegramAccount(telegramId);
+        allow create: if ownsTelegramAccount(telegramId)
+          && request.resource.data.keys().hasOnly([
+            'status', 'type', 'ticker', 'name', 'quantity', 'buy_price',
+            'buy_fx_rate', 'payload_json', 'image_data_url', 'rows_json', 'created_at'
+          ])
+          && request.resource.data.status == 'pending'
+          && request.resource.data.type in ['buy', 'import', 'image_parse', 'excel_parse']
+          && request.resource.data.created_at == request.time
+          && (
+            (request.resource.data.type == 'buy'
+              && request.resource.data.ticker is string
+              && request.resource.data.ticker.size() > 0
+              && request.resource.data.ticker.size() <= 30
+              && request.resource.data.name is string
+              && request.resource.data.name.size() <= 120
+              && request.resource.data.quantity is number
+              && request.resource.data.quantity > 0
+              && request.resource.data.quantity <= 1000000000
+              && request.resource.data.buy_price is number
+              && request.resource.data.buy_price > 0
+              && request.resource.data.buy_price <= 1000000000
+              && (!('buy_fx_rate' in request.resource.data)
+                  || (request.resource.data.buy_fx_rate is number
+                      && request.resource.data.buy_fx_rate > 0
+                      && request.resource.data.buy_fx_rate < 1000)))
+            ||
+            (request.resource.data.type == 'import'
+              && request.resource.data.payload_json is string
+              && request.resource.data.payload_json.size() > 2
+              && request.resource.data.payload_json.size() < 150000)
+            ||
+            (request.resource.data.type == 'image_parse'
+              && request.resource.data.image_data_url is string
+              && request.resource.data.image_data_url.size() > 100
+              && request.resource.data.image_data_url.size() < 700000)
+            ||
+            (request.resource.data.type == 'excel_parse'
+              && request.resource.data.rows_json is string
+              && request.resource.data.rows_json.size() > 2
+              && request.resource.data.rows_json.size() < 250000)
+          );
+        allow update, delete: if false;
+      }
+
+      // Website questions and fundamental-analysis requests are queued here.
+      // Only the bot/Admin SDK can answer or modify them after creation.
       match /ai_requests/{requestId} {
-        allow read: if request.auth != null
-          && exists(/databases/$(database)/documents/account_links/$(request.auth.uid))
-          && get(/databases/$(database)/documents/account_links/$(request.auth.uid)).data.telegram_id == telegramId;
-        allow create: if request.auth != null
-          && exists(/databases/$(database)/documents/account_links/$(request.auth.uid))
-          && get(/databases/$(database)/documents/account_links/$(request.auth.uid)).data.telegram_id == telegramId
-          && request.resource.data.status == "pending"
+        allow read: if ownsTelegramAccount(telegramId);
+        allow create: if ownsTelegramAccount(telegramId)
+          && request.resource.data.keys().hasOnly([
+            'status', 'kind', 'question', 'symbol', 'created_at'
+          ])
+          && request.resource.data.status == 'pending'
+          && request.resource.data.kind in ['question', 'fundamental', 'thinking', 'financial_assets']
           && request.resource.data.question is string
           && request.resource.data.question.size() > 0
-          && request.resource.data.question.size() < 500;
-        allow update, delete: if false; // only the bot (Admin SDK) writes the answer
+          && request.resource.data.question.size() < 500
+          && request.resource.data.created_at == request.time
+          && (request.resource.data.kind != 'fundamental'
+              || (request.resource.data.symbol is string
+                  && request.resource.data.symbol.size() > 0
+                  && request.resource.data.symbol.size() <= 30));
+        allow update, delete: if false;
       }
     }
   }

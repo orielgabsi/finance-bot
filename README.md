@@ -1,10 +1,11 @@
 # Finance Bot
 
-A Telegram bot for tracking a personal investment portfolio, a companion website with a Firebase-login dashboard, and a weekly AI-generated recommendation email.
+A Telegram bot and live web workspace for tracking a personal investment portfolio, free cash, personalized risk settings, fundamental stock/fund research, and verified AI recommendations.
 
-- **Telegram bot** — record purchases, view holdings, see a pie chart of your allocation plus gain/loss. Portfolios can be entered one trade at a time (`/buy`), or bulk-imported via `/import` from an Excel file or a screenshot (photo).
-- **Website** (`web/`) — sign in with Firebase Auth, link your web login to your Telegram portfolio with a one-time code, view the same pie chart + revenue numbers in a browser.
-- **Weekly email** (`weekly_recommendations.py`, run by GitHub Actions) — combines your live holdings with fresh news (Tavily search) and an AI-written summary (Groq), emailed via Resend.
+- **Telegram bot** — purchases, sales, cash balance, tax scenarios, Excel/photo import, personalized profile, and `/analyze` fundamental research for stocks and funds.
+- **Website** (`web/`) — a real-time Firebase dashboard with allocation, holdings, cash management, profile settings, transaction activity, tax scenarios, AI Q&A, and the same fundamental analyzer as Telegram.
+- **Verified AI** — every portfolio or fundamental recommendation is sent through a second Groq pass that checks the draft against the original trusted numbers/news and corrects unsupported claims.
+- **Weekly email** (`weekly_recommendations.py`, run by GitHub Actions) — combines live holdings, cash, profile, fresh news, and the same two-pass AI process, emailed via Resend.
 
 ## 1. Bot setup (Stage 1)
 
@@ -18,7 +19,7 @@ A Telegram bot for tracking a personal investment portfolio, a companion website
    ```
    python Finance_bot.py
    ```
-5. In Telegram: `/start`, enter the password, then use `/buy`, `/import`, `/portfolio`, `/cake`, `/email`, and `/link` (or the on-screen menu buttons).
+5. In Telegram: `/start`, enter the password, then use `/buy`, `/sell`, `/cash`, `/analyze`, `/profile`, `/import`, `/portfolio`, `/cake`, `/email`, and `/link` (or the on-screen menu buttons).
    - `/import` with an `.xlsx` file: the file needs a header row with recognizable column names (`Ticker`/`טיקר`, `Quantity`/`כמות`, `Price`/`מחיר` — English or Hebrew). Rows are shown as a preview before anything is saved.
    - `/import` with a photo: a screenshot of a portfolio (any broker/site). Read via a vision AI model (Groq `qwen/qwen3.6-27b`) — less reliable than the Excel path since it depends on image quality, so double-check the preview before confirming.
 
@@ -29,7 +30,7 @@ The website is a static site (no backend of its own) that reads the same Firesto
 1. **Enable Firebase Auth**: Firebase Console → your project → **Authentication** → Get started → enable the **Email/Password** provider.
 2. **Register a Web app**: Firebase Console → **Project settings** → General → "Your apps" → **Add app → Web**. Copy the config object it gives you.
 3. Paste those values into `web/firebase-config.js`, replacing every `REPLACE_ME_...` placeholder (`projectId` is already filled in). These values are safe to commit — they're not secret, unlike `serviceAccountKey.json`.
-4. **Deploy the security rules** so the website can only ever read data, never write it, and only for an account it has proven it controls via a link code:
+4. **Deploy the security rules**. Portfolio/trade/AI-result writes remain server-only; a proven linked website account may update only its own cash balance and profile. Link codes are atomically consumed once:
    ```
    npm install -g firebase-tools   # one-time
    firebase login
@@ -40,7 +41,7 @@ The website is a static site (no backend of its own) that reads the same Firesto
    firebase deploy --only hosting
    ```
    This deploys to the `finance-bot-app` Hosting site (set in `firebase.json`), live at **https://finance-bot-app.web.app**. (The project's original default site, `https://my-asistant-298e7.web.app`, still exists but is no longer kept in sync — `firebase deploy --only hosting` only pushes to `finance-bot-app` now.)
-6. **Link your account**: sign up on the website, then in Telegram send `/link` to the bot, and enter the code it gives you on the dashboard page.
+6. **Link your account**: sign up on the website, then in Telegram send `/link` to the bot, and enter the one-time code it gives you on the dashboard page. The dashboard listens to Firestore in real time, so bot-side updates appear without refreshing the page.
 
 ## 3. Weekly AI recommendations (Stage 3)
 
@@ -76,11 +77,12 @@ Do this **before** pushing this repo to GitHub. Also double-check `git status` b
 - `portfolio_service.py` — portfolio valuation math (cost basis, market value, gain/loss); pure functions, reused by the weekly email job
 - `chart_service.py` — generates the portfolio pie chart image
 - `portfolio_import.py` — bulk portfolio import: Excel parsing (`pandas`/`openpyxl`, header-matched) and screenshot parsing (Groq vision model)
-- `finance_engine.py` — optional Playwright-based scraper for globes.co.il (not wired into the bot; a possible future fallback for tickers `yfinance` can't resolve, e.g. TASE symbols without a `.TA` suffix)
+- `finance_engine.py` — Playwright-based Globes fallback used when Yahoo cannot resolve an Israeli security
+- `fundamental_service.py` — deterministic stock/fund metrics, performance/risk calculations, scoring and data-quality assessment via `yfinance`
 
 **Website (Stage 2):**
 - `web/index.html`, `web/auth.js` — login/signup page
-- `web/dashboard.html`, `web/dashboard.js` — link-code entry + pie chart + revenue dashboard
+- `web/dashboard.html`, `web/dashboard.js` — live portfolio workspace, cash/profile controls, tax tools, AI Q&A and fundamental analyzer
 - `web/firebase-config.js` — public Firebase web config (fill in after registering a web app)
 - `firestore.rules` — security rules: website is read-only, and only for a Telegram account it has proven it controls
 - `firebase.json`, `.firebaserc` — Firebase Hosting/deploy config

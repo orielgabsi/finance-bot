@@ -1,84 +1,236 @@
 <!DOCTYPE html>
 <html lang="he" dir="rtl">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Finance Bot — התיק שלי</title>
-<link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#07111f">
+  <title>FinPilot — מרכז ההשקעות שלי</title>
+  <link rel="stylesheet" href="style.css?v=20260724-10">
 </head>
-<body>
-  <div class="card dashboard-card">
-    <!-- Shown until this web login is linked to a Telegram account -->
-    <div id="link-section">
-      <h1>חיבור לחשבון הטלגרם</h1>
-      <p>פתח את הבוט בטלגרם, שלח <code>/link</code>, והזן כאן את הקוד שקיבלת (תקף ל-10 דקות).</p>
+<body class="dashboard-page">
+  <div id="link-section" class="auth-layout">
+    <section class="auth-panel">
+      <div class="brand-mark">FP</div>
+      <p class="eyebrow">חיבור מאובטח</p>
+      <h1>מחברים את תיק הטלגרם</h1>
+      <p class="lede">שלח <code>/link</code> לבוט והזן את הקוד החד־פעמי. הקוד תקף לעשר דקות וניתן לשימוש פעם אחת בלבד.</p>
       <label for="link-code">קוד חיבור</label>
-      <input id="link-code" type="text" placeholder="למשל: fAOjFi-w">
-      <button id="link-btn">חבר חשבון</button>
-      <div class="error" id="link-error"></div>
-    </div>
+      <input id="link-code" type="text" autocomplete="one-time-code" placeholder="למשל: fAOjFi-w">
+      <button id="link-btn">חבר את החשבון</button>
+      <div class="error" id="link-error" role="alert"></div>
+    </section>
+  </div>
 
-    <!-- Shown once linked -->
-    <div id="dashboard-section" class="hidden">
-      <h1>🥧 התיק שלי</h1>
-
-      <div class="stats">
-        <div class="stat">
-          <div class="value" id="stat-value">—</div>
-          <div class="label">שווי נוכחי</div>
-        </div>
-        <div class="stat">
-          <div class="value" id="stat-cost">—</div>
-          <div class="label">עלות כוללת</div>
-        </div>
-        <div class="stat">
-          <div class="value" id="stat-gain">—</div>
-          <div class="label">רווח/הפסד</div>
-        </div>
-        <div class="stat">
-          <div class="value" id="stat-day-change">—</div>
-          <div class="label">שינוי היום</div>
-        </div>
+  <div id="dashboard-section" class="app-shell hidden">
+    <header class="topbar">
+      <div class="brand-lockup">
+        <div class="brand-mark small">FP</div>
+        <div><strong>FinPilot</strong><span>Portfolio intelligence</span></div>
       </div>
-
-      <canvas id="pie-chart" width="400" height="400"></canvas>
-      <div id="empty-msg" class="hidden" style="text-align:center; color:#94a3b8; margin-top:20px;">
-        התיק ריק, או שעדיין לא הופק תרשים. שלח <code>/cake</code> בבוט כדי לעדכן.
+      <div class="topbar-actions">
+        <div id="sync-status" class="sync-pill"><span></span> מתחבר…</div>
+        <button class="ghost compact" id="logout-btn">התנתקות</button>
       </div>
-      <div class="updated-at" id="updated-at"></div>
+    </header>
 
-      <div id="holdings-list" class="holdings-list"></div>
+    <main class="workspace">
+      <section class="hero-panel">
+        <div>
+          <p class="eyebrow">תמונת מצב בזמן אמת</p>
+          <h1 id="welcome-title">שלום, התיק שלך מוכן</h1>
+          <p id="portfolio-insight" class="lede">מסנכרן נתונים מהבוט…</p>
+        </div>
+        <div class="hero-value">
+          <span>סך הנכסים הפיננסיים</span>
+          <strong id="stat-account-value">—</strong>
+          <small id="updated-at"></small>
+        </div>
+      </section>
 
-      <div class="section-divider"></div>
-      <h2>🧮 סימולטור מס</h2>
-      <p class="hint">בדיקת "מה אם" בלבד — שום דבר לא נמכר בפועל. הערכה גסה של מס רווחי הון בישראל (25% שטוח), לא ייעוץ מס.</p>
-      <label for="tax-ticker">טיקר</label>
-      <select id="tax-ticker"></select>
-      <label for="tax-qty">כמות למכירה</label>
-      <input id="tax-qty" type="number" step="any" placeholder="לדוגמה: 5">
-      <label for="tax-price">מחיר מכירה ליחידה</label>
-      <input id="tax-price" type="number" step="any" placeholder="ברירת מחדל: המחיר הנוכחי">
-      <button id="tax-sim-btn">חשב מס משוער</button>
-      <div id="tax-result" class="result-box hidden"></div>
+      <section class="stats-grid" aria-label="נתוני חשבון מרכזיים">
+        <article class="metric-card" data-help="שווי ניירות הערך והמזומן בחשבון המסחר בלבד, ללא קופות וחסכונות."><span>חשבון מסחר משוער</span><strong id="stat-trading-account">—</strong><small>ניירות ומזומן</small></article>
+        <article class="metric-card" data-help="השווי הנוכחי של ניירות הערך שעבורם נמצא מחיר עדכני, ללא מזומן."><span>שווי ניירות</span><strong id="stat-value">—</strong><small>מחירים זמינים</small></article>
+        <article class="metric-card" data-help="יתרת הכסף שאינה מושקעת כרגע וזמינה לפעולות בחשבון המסחר."><span>מזומן פנוי</span><strong id="stat-cash">—</strong><small id="cash-share">—</small></article>
+        <article class="metric-card" data-help="השווי המשוער של קופות הגמל ומכשירי החיסכון שהוספת, בנפרד מתיק המסחר."><span>קופות וחסכונות</span><strong id="stat-savings">—</strong><small>יתרה מדווחת + אומדן חודשי</small></article>
+        <article class="metric-card" data-help="סכום מחירי הבסיס של הניירות המתומחרים; ממנו מחושב הרווח או ההפסד האישי."><span>עלות מתומחרת</span><strong id="stat-cost">—</strong><small>בסיס לחישוב תשואה</small></article>
+        <article class="metric-card" data-help="הרווח או ההפסד האישי מאז מחירי הבסיס שהוזנו, בשקלים ובאחוזים; אינו שינוי יומי."><span>רווח / הפסד</span><strong id="stat-gain">—</strong><small>מאז מחירי הבסיס שהוזנו</small></article>
+        <article class="metric-card" data-help="השינוי המשוער בשווי הניירות ביום המסחר האחרון בלבד, ולא מאז הקנייה."><span>שינוי יומי</span><strong id="stat-day-change">—</strong><small>יום המסחר האחרון בלבד</small></article>
+      </section>
+      <div class="notice accuracy-note">שווי חשבון המסחר הוא אומדן לפי זמן המחיר ושער המטבע המוצגים. פער קטן מול הברוקר יכול לנבוע מהשהיית מחיר, תזמון מט״ח, עיגול ועמלות; חשבון הברוקר הוא המקור הקובע.</div>
 
-      <div class="section-divider"></div>
-      <h2>🤖 AI — המלצה ושאלות</h2>
-      <p class="hint">התשובה מופקת ע"י הבוט בטלגרם (כולל חיפוש חדשות ברשת) ועשויה לקחת עד כמה שניות.</p>
-      <button id="ai-recommend-btn" class="secondary">קבל המלצת AI קצרה</button>
-      <label for="ai-question">או שאל שאלה חופשית על התיק שלך</label>
-      <input id="ai-question" type="text" placeholder="למשל: כמה שווה התיק שלי היום?">
-      <button id="ai-ask-btn">שאל</button>
-      <div id="ai-answer" class="result-box hidden"></div>
+      <section class="dashboard-grid">
+        <article class="panel allocation-panel" data-help="תרשים חלוקת התיק לפי נכס, מטבע, סקטור או מדינה ושוק; הוא עוזר לזהות ריכוזיות.">
+          <div class="panel-heading"><div><p class="eyebrow">פיזור</p><h2>הרכב התיק</h2></div><span id="concentration-badge" class="badge">—</span></div>
+          <div class="allocation-tabs" role="group" aria-label="אופן הצגת פיזור התיק">
+            <button class="compact allocation-tab active" data-mode="asset">נכסים</button>
+            <button class="compact ghost allocation-tab" data-mode="currency">מטבעות</button>
+            <button class="compact ghost allocation-tab" data-mode="sector">סקטורים</button>
+            <button class="compact ghost allocation-tab" data-mode="market">מדינות ושווקים</button>
+          </div>
+          <div id="pie-chart-frame" class="chart-frame allocation-frame"><canvas id="pie-chart"></canvas></div>
+          <div id="empty-msg" class="empty-state hidden">אין עדיין ניירות מתומחרים. הוסף החזקה בבוט או רענן מחירים.</div>
+          <div id="pricing-warning" class="notice warning hidden"></div>
+          <div class="inline-form allocation-analysis-action">
+            <select id="portfolio-analysis-ticker" aria-label="בחר נכס לניתוח AI"></select>
+            <button id="portfolio-analysis-btn">המלצת AI על הנכס</button>
+          </div>
+        </article>
 
-      <div class="section-divider"></div>
-      <h2>📜 היסטוריית עסקאות</h2>
-      <div id="tx-list" class="tx-list"></div>
+        <article class="panel holdings-panel" data-help="פירוט כל הניירות בתיק: כמות, מחיר נוכחי, שווי ותשואה אישית מאז מחיר הבסיס.">
+          <div class="panel-heading"><div><p class="eyebrow">נכסים</p><h2>החזקות</h2></div><span id="holdings-count" class="badge">0</span></div>
+          <div id="holdings-list" class="holdings-table"></div>
+        </article>
 
-      <button class="secondary" id="logout-btn">התנתק</button>
-    </div>
+        <article class="panel benchmark-panel wide" data-help="השוואת התשואה המשוקללת של ניירות הערך המתומחרים בתיק מול S&amp;P 500, נאסד״ק 100 ות״א 125, לפי יום, שבוע, חודש ושנה.">
+          <div class="panel-heading"><div><p class="eyebrow">Benchmark</p><h2>התיק שלי מול המדדים המובילים</h2></div><span id="benchmark-badge" class="badge">—</span></div>
+          <div id="benchmark-chart-frame" class="chart-frame benchmark-frame"><canvas id="benchmark-chart"></canvas></div>
+          <div id="benchmark-empty" class="empty-state hidden">אין עדיין מספיק ניירות מתומחרים להשוואה מול המדדים.</div>
+          <p class="method-note">התשואה מחושבת לפי משקל השווי של הניירות המתומחרים בתיק בלבד (ללא מזומן וקופות); S&amp;P 500, נאסד״ק 100 (דרך תכלית סל NASDAQ 100) ות״א 125 (דרך אי.בי.אי. מחקה ת״א 125) מוצגים לפי אותם פרקי זמן.</p>
+        </article>
+
+        <article class="panel goal-panel wide" data-help="מד ההתקדמות משווה את סך הנכסים הפיננסיים לסכום היעד ששמרת.">
+          <div class="panel-heading"><div><p class="eyebrow">Financial goal</p><h2>היעד הפיננסי שלי</h2></div><span id="goal-percent" class="badge">טרם הוגדר</span></div>
+          <div class="goal-meter" aria-label="התקדמות ליעד"><i id="goal-progress"></i></div>
+          <div class="goal-summary"><strong id="goal-current">—</strong><span id="goal-remaining">הגדר יעד כדי להתחיל לעקוב</span></div>
+          <div id="goal-editor">
+            <div class="form-grid goal-form">
+              <div><label for="goal-name">שם היעד</label><input id="goal-name" type="text" maxlength="80" placeholder="למשל: 30 אלף ראשונים"></div>
+              <div><label for="goal-target">סכום יעד בשקלים</label><input id="goal-target" type="number" min="1" step="any" placeholder="30000"></div>
+            </div>
+            <button id="goal-save-btn">שמור יעד</button>
+          </div>
+          <button id="goal-edit-btn" class="secondary compact hidden">עריכת היעד</button>
+          <div id="goal-message" class="form-message" role="status"></div>
+        </article>
+
+        <article class="panel savings-panel wide" data-help="ניהול קופות גמל וחסכונות ארוכי טווח, כולל צבירה, הפקדות ואומדן שינוי מאז הדיווח.">
+          <div class="panel-heading"><div><p class="eyebrow">Long-term savings</p><h2>קופות גמל ומכשירים פיננסיים</h2></div><span id="savings-total-badge" class="badge">0 ₪</span></div>
+          <p class="panel-copy">הזן את הצבירה שמופיעה באזור האישי. עדכונים אוטומטיים הם אומדן לפי תשואות חודשיות שפורסמו לאחר תאריך היתרה; היתרה אצל הגוף המנהל היא המקור הקובע.</p>
+          <div id="asset-editor">
+            <div class="form-grid asset-form">
+              <div><label for="asset-track">מסלול</label><select id="asset-track"><option value="7799">אלטשולר שחם חיסכון פלוס מניות (7799)</option><option value="14864">אלטשולר שחם חיסכון פלוס עוקב מדדי מניות (14864)</option></select></div>
+              <div><label for="asset-balance">צבירה נוכחית</label><input id="asset-balance" type="number" min="0.01" step="any" placeholder="₪"></div>
+              <div><label for="asset-date">היתרה נכונה לתאריך</label><input id="asset-date" type="date"></div>
+              <div><label for="asset-contributed">סך הפקדות עד היום</label><input id="asset-contributed" type="number" min="0" step="any" placeholder="אופציונלי"></div>
+              <div><label for="asset-monthly">הפקדה חודשית</label><input id="asset-monthly" type="number" min="0" step="any" placeholder="0"></div>
+            </div>
+            <div class="button-row"><button id="asset-add-btn">שמור מכשיר</button><button id="asset-cancel-btn" class="secondary hidden">ביטול עריכה</button></div>
+          </div>
+          <div class="button-row"><button id="asset-new-btn" class="secondary hidden">הוסף מכשיר נוסף</button><button id="assets-refresh-btn" class="secondary">רענן תשואות</button></div>
+          <div id="asset-message" class="form-message" role="status"></div>
+          <div id="financial-assets-list" class="financial-assets-list"></div>
+        </article>
+
+        <article class="panel web-trading-panel wide" data-help="הוספת קנייה או סנכרון תמונת התיק מקובץ Excel או תמונה; השינויים מוצגים לאישור לפני שמירה.">
+          <div class="panel-heading"><div><p class="eyebrow">Secure portfolio actions</p><h2>קנייה וייבוא תיק מהאתר</h2></div><span class="verified-badge">בדיקה בצד השרת</span></div>
+          <div class="web-actions-grid">
+            <section>
+              <h3>הוספת קנייה</h3>
+              <div class="form-grid">
+                <div><label for="web-buy-ticker">טיקר / מספר נייר</label><input id="web-buy-ticker" type="text" maxlength="30" placeholder="AAPL או 5112628"></div>
+                <div><label for="web-buy-name">שם הנייר</label><input id="web-buy-name" type="text" maxlength="120" placeholder="אופציונלי"></div>
+                <div><label for="web-buy-qty">כמות</label><input id="web-buy-qty" type="number" min="0.000001" step="any"></div>
+                <div><label for="web-buy-price">מחיר קנייה</label><input id="web-buy-price" type="number" min="0.000001" step="any"></div>
+                <div><label for="web-buy-fx">שער מט״ח ביום הקנייה</label><input id="web-buy-fx" type="number" min="0.000001" step="any" placeholder="אופציונלי, למשל 3.65"></div>
+              </div>
+              <p class="method-note">בנייר ישראלי הזן מחיר בשקלים, לא באגורות. בנייר זר הזן מחיר במטבע המסחר; שער המט״ח בקנייה מאפשר להפריד בין תשואת הנכס להשפעת המט״ח.</p>
+              <button id="web-buy-btn">אשר הוספת קנייה</button>
+              <div id="web-buy-message" class="form-message" role="status"></div>
+            </section>
+            <section>
+              <h3>ייבוא Excel</h3>
+              <p class="panel-copy">העלה מחדש את קובץ הברוקר: המערכת תשווה לתיק הקיים ותראה מה נוסף, השתנה או לא מופיע יותר לפני האישור.</p>
+              <input id="portfolio-file" type="file" accept=".xlsx,.xls,.png,.jpg,.jpeg,image/png,image/jpeg">
+              <p class="method-note">אפשר להעלות Excel או צילום מסך ברור של התיק. תמונה תנותח תחילה ותמיד תוצג לאישור.</p>
+              <div id="import-preview" class="import-preview hidden"></div>
+              <button id="import-confirm-btn" class="danger hidden">אשר והחלף תיק</button>
+              <div id="web-import-message" class="form-message" role="status"></div>
+            </section>
+          </div>
+        </article>
+
+        <article class="panel analysis-panel wide" data-help="ניתוח לימודי של מניה או קרן: תמחור, איכות, ביצועים, סיכון, דירוג מתוך 100 וטווח כניסה.">
+          <div class="panel-heading">
+            <div><p class="eyebrow">Research lab</p><h2>ניתוח פונדמנטלי למניה או קרן</h2></div>
+            <span class="verified-badge">✓ בדיקת AI כפולה</span>
+          </div>
+          <p class="panel-copy">הזן טיקר או שם. תקבל מחיר נוכחי מול מחיר ייחוס, טווח כניסה לימודי ותנאים לשקילת קנייה, לצד דירוג כולל ודירוג לכל קטגוריה מתוך 100.</p>
+          <div class="inline-form">
+            <input id="analysis-symbol" type="text" maxlength="30" placeholder="AAPL, SPY, QQQ או שם חברה">
+            <button id="analysis-btn">נתח עכשיו</button>
+          </div>
+          <div id="analysis-result" class="analysis-result hidden" aria-live="polite"></div>
+        </article>
+
+        <article class="panel cash-panel" data-help="עדכון יתרת המזומן הפנוי בחשבון המסחר; המזומן נכלל בשווי החשבון אך לא בתשואת הניירות.">
+          <div class="panel-heading"><div><p class="eyebrow">Liquidity</p><h2>מזומן פנוי</h2></div><span id="cash-live-value" class="badge">—</span></div>
+          <p class="panel-copy">המזומן נשמר בחשבון ומסתנכרן מיד עם הבוט. הוא נכלל בשווי החשבון, אך לא ברווח/הפסד של הניירות.</p>
+          <label for="cash-amount">סכום</label>
+          <input id="cash-amount" type="number" min="0" step="any" placeholder="לדוגמה: 1000">
+          <div class="button-row three">
+            <button id="cash-deposit-btn" class="secondary">הפקדה</button>
+            <button id="cash-withdraw-btn" class="secondary">משיכה</button>
+            <button id="cash-set-btn">קבע יתרה</button>
+          </div>
+          <div id="cash-message" class="form-message" role="status"></div>
+        </article>
+
+        <article class="panel profile-panel" data-help="העדפות הסיכון, טווח ההשקעה, המטרה והמטבע שמשמשים להתאמת ניתוחי ה-AI אליך.">
+          <div class="panel-heading"><div><p class="eyebrow">Personalization</p><h2>הפרופיל שלי</h2></div></div>
+          <div id="profile-summary" class="saved-summary hidden"></div>
+          <div id="profile-editor">
+            <div class="form-grid">
+              <div><label for="profile-name">שם לתצוגה</label><input id="profile-name" type="text" maxlength="80"></div>
+              <div><label for="profile-risk">רמת סיכון</label><select id="profile-risk"><option value="conservative">שמרני</option><option value="balanced">מאוזן</option><option value="aggressive">אגרסיבי</option></select></div>
+              <div><label for="profile-horizon">טווח השקעה</label><select id="profile-horizon"><option value="short">קצר</option><option value="medium">בינוני</option><option value="long">ארוך</option></select></div>
+              <div><label for="profile-currency">מטבע בסיס</label><select id="profile-currency"><option value="ILS">ILS — ₪</option><option value="USD">USD — $</option><option value="EUR">EUR — €</option></select></div>
+            </div>
+            <label for="profile-goal">מטרת השקעה</label>
+            <input id="profile-goal" type="text" maxlength="200" placeholder="למשל: צמיחה ארוכת טווח והכנסה מדיבידנדים">
+            <button id="profile-save-btn">שמור התאמה אישית</button>
+          </div>
+          <button id="profile-edit-btn" class="secondary compact hidden">עריכת הפרופיל</button>
+          <div id="profile-message" class="form-message" role="status"></div>
+        </article>
+
+        <article class="panel ai-panel wide" data-help="שאלות על התיק וניתוח מעמיק שמשלבים החזקות, מזומן, חסכונות, פרופיל ונתוני שוק זמינים.">
+          <div class="panel-heading"><div><p class="eyebrow">Portfolio copilot</p><h2>שאל את ה־AI על התיק</h2></div><span class="live-dot">הבוט מחובר</span></div>
+          <p class="panel-copy">השאלה עוברת לבוט, שמחשב נתונים חיים, מחפש חדשות ומחזיר תשובה מותאמת לפרופיל שלך.</p>
+          <div class="button-row">
+            <button id="thinking-btn">🧠 מצב חשיבה על כל התיק</button>
+            <button id="ai-recommend-btn" class="secondary">קבל סקירה מאומתת</button>
+          </div>
+          <div class="inline-form">
+            <input id="ai-question" type="text" maxlength="499" placeholder="מה הסיכון המרכזי בתיק שלי כרגע?">
+            <button id="ai-ask-btn">שאל</button>
+          </div>
+          <div id="ai-answer" class="result-box hidden" aria-live="polite"></div>
+        </article>
+
+        <article class="panel tax-panel" data-help="הדמיית מכירה שמחשבת תמורה, עמלת מסחר צפויה, רווח חייב, מס משוער ונטו; אינה מוכרת בפועל.">
+          <div class="panel-heading"><div><p class="eyebrow">Scenario</p><h2>סימולטור מכירה, עמלה ומס</h2></div></div>
+          <p class="panel-copy">הדמיית מכירה הכוללת עמלת מסחר צפויה לפי הנספח שלך ומס רווחי הון משוער של 25%. כל התוצאות בשקלים ושום דבר לא נמכר בפועל.</p>
+          <div class="commission-note">✓ בכל חישוב תוצג בנפרד עמלת המסחר הצפויה והבסיס שלפיו חושבה.</div>
+          <label for="tax-ticker">נייר</label><select id="tax-ticker"></select>
+          <div class="form-grid">
+            <div><label for="tax-qty">כמות</label><input id="tax-qty" type="number" min="0" step="any"></div>
+            <div><label for="tax-price">מחיר מכירה בשקלים</label><input id="tax-price" type="number" min="0" step="any" placeholder="₪"></div>
+          </div>
+          <div class="button-row"><button id="tax-current-btn" class="secondary">השתמש במחיר הנוכחי</button><button id="tax-sim-btn">חשב תרחיש</button></div>
+          <div id="tax-result" class="result-box hidden"></div>
+        </article>
+
+        <article class="panel activity-panel" data-help="היסטוריית הפעולות האחרונות שנרשמו ב-FinPilot, כגון קנייה, מכירה וסנכרון תיק.">
+          <div class="panel-heading"><div><p class="eyebrow">Activity</p><h2>פעילות אחרונה</h2></div><span class="badge">Live</span></div>
+          <div id="tx-list" class="tx-list"></div>
+        </article>
+      </section>
+
+      <footer>FinPilot מציג מידע לימודי בלבד ואינו מחליף ייעוץ השקעות או מס מוסמך.</footer>
+    </main>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
-  <script type="module" src="dashboard.js"></script>
+  <script type="module" src="dashboard.js?v=20260724-9"></script>
 </body>
 </html>

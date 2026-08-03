@@ -42,12 +42,22 @@ def _trend_color(value) -> str:
     return ACCENT if float(value) >= 0 else DANGER
 
 
-def _stat_cell(label: str, value: str, color: str = TEXT) -> str:
+def _stat_row(label: str, value: str, color: str = TEXT) -> str:
+    # A full-width row (not a side-by-side column) so it stacks correctly
+    # on mobile without relying on the mail client honoring @media rules —
+    # several clients (notably the Gmail Android/iOS app) strip or ignore
+    # <style> media queries, so the default layout has to already be mobile-safe.
     return f"""
-    <td class="stat-cell" style="padding:14px 10px; background:{CARD_BG}; border:1px solid {BORDER}; border-radius:12px;">
-      <div style="color:{MUTED}; font-size:11px; margin-bottom:6px;">{html.escape(label)}</div>
-      <div style="color:{color}; font-size:16px; font-weight:700;">{value}</div>
-    </td>"""
+    <tr>
+      <td style="padding:0 0 8px;">
+        <table width="100%" style="border-collapse:collapse; background:{CARD_BG}; border:1px solid {BORDER}; border-radius:12px;">
+          <tr>
+            <td style="padding:12px 14px; color:{MUTED}; font-size:12px; white-space:nowrap;">{html.escape(label)}</td>
+            <td style="padding:12px 14px; color:{color}; font-size:16px; font-weight:700; text-align:left;">{value}</td>
+          </tr>
+        </table>
+      </td>
+    </tr>"""
 
 
 def _section_title(text: str) -> str:
@@ -61,50 +71,45 @@ def build_email_html(valuation: dict, recommendation_text: str, profile: dict | 
     # reason.
     profile = profile or {}
 
-    holding_rows = []
+    # Each holding is its own stacked card (label/value rows) instead of a
+    # wide table — a 5-column table has no safe way to fit a narrow phone
+    # screen in email clients, since horizontal scrolling (overflow-x) isn't
+    # reliably supported in mail rendering engines the way it is in browsers.
+    holding_cards = []
     for ticker, h in sorted(
         valuation["holdings"].items(), key=lambda item: item[1].get("market_value") or 0, reverse=True
     ):
         name = h.get("name")
         ticker_html = f"<bdi>{html.escape(ticker)}</bdi>"
-        label = f"<bdi>{html.escape(name)}</bdi><br><span style='color:{MUTED}; font-size:11px;'>{ticker_html}</span>" if name else ticker_html
+        title_html = f"<bdi>{html.escape(name)}</bdi> <span style='color:{MUTED}; font-size:11px;'>({ticker_html})</span>" if name else ticker_html
         value_str = _money(h["market_value"]) if h["market_value"] is not None else "לא זמין"
         gain = h.get("gain_loss")
         gain_str = f"{'+' if gain >= 0 else ''}{_money(gain)}" if gain is not None else "—"
         broker_str = html.escape(h.get("broker") or "—")
-        cell_style = f"padding:10px 8px; border-bottom:1px solid {BORDER}; font-size:13px;"
-        holding_rows.append(
-            f"<tr>"
-            f"<td style='{cell_style}'>{label}</td>"
-            f"<td style='{cell_style}'>{h['quantity']}</td>"
-            f"<td style='{cell_style}'>{value_str}</td>"
-            f"<td style='{cell_style} color:{_trend_color(gain)};'>{gain_str}</td>"
-            f"<td style='{cell_style} color:{MUTED};'>{broker_str}</td>"
-            f"</tr>"
-        )
-    holdings_table = f"""
-    <div class="scroll-x" style="overflow-x:auto;">
-    <table width="100%" style="border-collapse:collapse; margin-top:8px; min-width:480px;">
-      <tr style="color:{MUTED}; font-size:11px; text-transform:uppercase;">
-        <td style="padding:6px 8px;">נייר</td><td style="padding:6px 8px;">כמות</td>
-        <td style="padding:6px 8px;">שווי</td><td style="padding:6px 8px;">רווח/הפסד</td>
-        <td style="padding:6px 8px;">ברוקר</td>
-      </tr>
-      {"".join(holding_rows)}
-    </table>
-    </div>"""
+        row_style = f"padding:3px 0; font-size:13px; color:{MUTED};"
+        holding_cards.append(f"""
+        <table width="100%" style="border-collapse:collapse; background:{CARD_BG}; border:1px solid {BORDER}; border-radius:12px; margin-bottom:8px;">
+          <tr><td style="padding:12px 14px 4px; font-size:14px; font-weight:700; color:{TEXT};">{title_html}</td></tr>
+          <tr><td style="padding:0 14px 12px;">
+            <table width="100%" style="border-collapse:collapse;">
+              <tr><td style="{row_style}">כמות</td><td style="{row_style} text-align:left;">{h['quantity']}</td></tr>
+              <tr><td style="{row_style}">שווי</td><td style="{row_style} text-align:left; color:{TEXT};">{value_str}</td></tr>
+              <tr><td style="{row_style}">רווח/הפסד</td><td style="{row_style} text-align:left; color:{_trend_color(gain)};">{gain_str}</td></tr>
+              <tr><td style="{row_style}">ברוקר</td><td style="{row_style} text-align:left;">{broker_str}</td></tr>
+            </table>
+          </td></tr>
+        </table>""")
+    holdings_table = "".join(holding_cards)
 
     gain = valuation.get("total_gain_loss")
     gain_pct = valuation.get("total_gain_loss_pct")
     gain_str = f"{'+' if gain is not None and gain >= 0 else ''}{_money(gain)} ({gain_pct:+.1f}%)" if gain is not None else "—"
 
     stats_row = f"""
-    <table class="stat-row" width="100%" style="border-collapse:separate; border-spacing:8px 0;">
-      <tr>
-        {_stat_cell("שווי חשבון כולל", _money(valuation.get("account_total_value", valuation.get("total_value"))))}
-        {_stat_cell("רווח/הפסד בתיק", gain_str, _trend_color(gain))}
-        {_stat_cell("מזומן פנוי", _money(valuation.get("cash_balance", 0)))}
-      </tr>
+    <table width="100%" style="border-collapse:collapse;">
+      {_stat_row("שווי חשבון כולל", _money(valuation.get("account_total_value", valuation.get("total_value"))))}
+      {_stat_row("רווח/הפסד בתיק", gain_str, _trend_color(gain))}
+      {_stat_row("מזומן פנוי", _money(valuation.get("cash_balance", 0)))}
     </table>"""
 
     savings_section = ""
@@ -159,10 +164,11 @@ def build_email_html(valuation: dict, recommendation_text: str, profile: dict | 
 <title>ההמלצה השבועית שלך</title>
 <style>
   body {{ margin:0; }}
+  /* Enhancement only — the layout below is already fluid/stacked by default
+     so it stays readable even in clients (e.g. the Gmail app) that ignore
+     this block entirely. */
   @media (max-width: 480px) {{
     .email-wrap {{ padding:14px !important; }}
-    .stat-row, .stat-row tr {{ display:block !important; width:100% !important; }}
-    .stat-cell {{ display:block !important; width:100% !important; box-sizing:border-box; margin-bottom:8px; }}
     .cta-btn {{ display:block !important; width:100% !important; box-sizing:border-box; }}
     h2 {{ font-size:17px !important; }}
   }}

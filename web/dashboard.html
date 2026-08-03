@@ -42,12 +42,24 @@
         <div>
           <p class="eyebrow">תמונת מצב בזמן אמת</p>
           <h1 id="welcome-title">שלום, התיק שלך מוכן</h1>
-          <p id="portfolio-insight" class="lede">מסנכרן נתונים מהבוט…</p>
+          <p id="portfolio-insight" class="lede">מסנכרן נתונים…</p>
         </div>
         <div class="hero-value">
           <span>סך הנכסים הפיננסיים</span>
           <strong id="stat-account-value">—</strong>
           <small id="updated-at"></small>
+        </div>
+      </section>
+
+      <section id="getting-started-banner" class="getting-started-banner hidden">
+        <div>
+          <p class="eyebrow">שלב ראשון</p>
+          <h2>בוא נתחיל למלא את התיק</h2>
+          <p class="lede">הוסף קנייה ידנית, או ייבא תיק שלם מקובץ אקסל או מתמונה/צילום מסך — הכל דרך האתר, בלי צורך בבוט.</p>
+        </div>
+        <div class="getting-started-actions">
+          <a href="#web-buy-ticker" class="button-link">הוסף קנייה</a>
+          <a href="#portfolio-file" class="button-link secondary-link">ייבא תיק (Excel / תמונה)</a>
         </div>
       </section>
 
@@ -74,7 +86,7 @@
             <button class="compact ghost allocation-tab" data-mode="broker">ברוקרים</button>
           </div>
           <div id="pie-chart-frame" class="chart-frame allocation-frame"><canvas id="pie-chart"></canvas></div>
-          <div id="empty-msg" class="empty-state hidden">אין עדיין ניירות מתומחרים. הוסף החזקה בבוט או רענן מחירים.</div>
+          <div id="empty-msg" class="empty-state hidden">אין עדיין ניירות מתומחרים. <a href="#web-buy-ticker" class="jump-to-buy-link">הוסף קנייה</a> או ייבא תיק למטה בעמוד.</div>
           <div id="pricing-warning" class="notice warning hidden"></div>
           <div class="inline-form allocation-analysis-action">
             <select id="portfolio-analysis-ticker" aria-label="בחר נכס לניתוח AI"></select>
@@ -208,8 +220,8 @@
         </article>
 
         <article class="panel ai-panel wide" data-help="שאלות על התיק וניתוח מעמיק שמשלבים החזקות, מזומן, חסכונות, פרופיל ונתוני שוק זמינים.">
-          <div class="panel-heading"><div><p class="eyebrow">Portfolio copilot</p><h2>שאל את ה־AI על התיק</h2></div><span class="live-dot">הבוט מחובר</span></div>
-          <p class="panel-copy">השאלה עוברת לבוט, שמחשב נתונים חיים, מחפש חדשות ומחזיר תשובה מותאמת לפרופיל שלך.</p>
+          <div class="panel-heading"><div><p class="eyebrow">Portfolio copilot</p><h2>שאל את ה־AI על התיק</h2></div><span class="live-dot">מחובר</span></div>
+          <p class="panel-copy">השאלה מחושבת בזמן אמת מול נתונים חיים, חדשות עדכניות ותשובה מותאמת לפרופיל שלך.</p>
           <div class="button-row">
             <button id="thinking-btn">🧠 מצב חשיבה על כל התיק</button>
             <button id="ai-recommend-btn" class="secondary">קבל סקירה מאומתת</button>

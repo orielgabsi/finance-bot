@@ -330,6 +330,16 @@ def _buy_in_transaction(
     return holding
 
 
+def set_holding_broker(user_id, ticker, broker):
+    """Relabels an existing holding's broker without touching quantity, cost
+    basis, or writing a transaction record — unlike record_buy, this isn't a
+    purchase."""
+    ticker = str(ticker).strip().upper()
+    broker = str(broker or "").strip()[:60]
+    user_ref = db.collection("users").document(user_id)
+    user_ref.update({f"portfolio.{ticker}.broker": broker})
+
+
 def add_holding(user_id, ticker, quantity, buy_price, name=None, broker=None):
     """`name` is an optional human-readable security name (e.g. from an
     Israeli brokerage export's "שם נייר" column, since the ticker there is

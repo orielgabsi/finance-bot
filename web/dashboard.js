@@ -216,6 +216,8 @@ function renderDashboard() {
   );
   const savingsGainPct = savingsGainBase > 0 ? (savingsGain / savingsGainBase) * 100 : 0;
   const accountValue = tradingAccountValue + savingsValue;
+  const isEmptyAccount = Object.keys(holdings).length === 0 && cash === 0 && savingsValue === 0;
+  $("getting-started-banner").classList.toggle("hidden", !isEmptyAccount);
   const pricedCost = numberOrZero(valuation?.priced_cost ?? valuation?.total_cost);
   const gain = numberOrZero(valuation?.total_gain_loss);
   const gainPct = numberOrZero(valuation?.total_gain_loss_pct);
@@ -1150,7 +1152,7 @@ async function submitRequest(request, target) {
       ? "הבקשה נחסמה בהרשאות. רענן את האתר והתחבר מחדש; אם הבעיה נמשכת, נסה שוב בעוד רגע."
       : code.includes("unavailable")
         ? "שירות הנתונים אינו זמין זמנית. בדוק את החיבור ונסה שוב."
-        : "הבקשה נכשלה לפני שהגיעה לבוט. רענן את האתר ונסה שוב.";
+        : "הבקשה נכשלה לפני שעובדה. רענן את האתר ונסה שוב.";
     delete host.dataset.busy;
     toggleRequestButtons(false);
     console.error(error);

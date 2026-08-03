@@ -100,7 +100,7 @@ code { direction: ltr; unicode-bidi: isolate; color: #bdeedc; background: rgba(7
 .auth-panel button, .card button:not(.compact) { width: 100%; margin-top: 18px; }
 .error { min-height: 1.4em; margin-top: 10px; color: var(--danger); font-size: 0.86rem; }
 .success-msg { margin-top: 10px; padding: 11px 13px; border-radius: 10px; color: #bfeede; background: rgba(70, 215, 167, 0.08); border: 1px solid rgba(70, 215, 167, 0.18); font-size: 0.86rem; line-height: 1.45; }
-.field-hint { margin: -10px 0 0; color: var(--muted); font-size: 0.76rem; }
+.field-hint { margin: 6px 0 0; color: var(--muted); font-size: 0.76rem; line-height: 1.4; }
 .toggle-link { margin-top: 14px; text-align: center; color: var(--muted); font-size: 0.9rem; }
 .toggle-link a { color: var(--accent); cursor: pointer; }
 

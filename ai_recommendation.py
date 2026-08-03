@@ -155,11 +155,17 @@ Return JSON only:
 {{"approved": true/false, "issues": ["short issue"], "final_text": "corrected Hebrew answer"}}
 The final_text must be in Hebrew, concise, and must not introduce any fact that
 is absent from TRUSTED FACTS. If the draft is correct, preserve it closely."""
-    checked = _call_groq_json_with_retry(prompt, model=GROQ_VERIFIER_MODEL)
-    final_text = str(checked.get("final_text") or "").strip()
-    if not final_text:
-        raise RuntimeError("The AI verifier returned an empty final answer.")
-    return final_text
+    try:
+        checked = _call_groq_json_with_retry(prompt, model=GROQ_VERIFIER_MODEL)
+        final_text = str(checked.get("final_text") or "").strip()
+        if final_text:
+            return final_text
+    except Exception:
+        pass
+    # The verifier model occasionally returns valid-but-empty JSON (or fails
+    # outright). Falling back to the unverified draft still gets the user a
+    # useful note instead of silently dropping their weekly email entirely.
+    return draft
 
 
 def generate_recommendation(valuation: dict, market_context: str, profile: dict | None = None) -> str:

@@ -15,6 +15,11 @@ DISCLAIMER = (
     "בהתייעצות עם איש מקצוע מוסמך.</p>"
 )
 
+# Same picture set on the Telegram bot itself, hosted from the public
+# dashboard site so email clients (which won't render inline/base64 images
+# reliably) can load it.
+BOT_AVATAR_URL = "https://finance-bot-ori19.vercel.app/bot-avatar.jpg"
+
 
 def build_email_html(valuation: dict, recommendation_text: str) -> str:
     # Names/tickers can originate from an imported spreadsheet, and the
@@ -32,7 +37,11 @@ def build_email_html(valuation: dict, recommendation_text: str) -> str:
     recommendation_text = html.escape(recommendation_text)
     return f"""
     <div style="font-family: Arial, sans-serif; direction: rtl; text-align: right;">
-      <h2>ההמלצה השבועית שלך 📈</h2>
+      <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
+        <img src="{BOT_AVATAR_URL}" width="48" height="48" alt="FinPilot"
+             style="width:48px; height:48px; border-radius:50%; display:block; flex-shrink:0;">
+        <h2 style="margin:0;">ההמלצה השבועית שלך 📈</h2>
+      </div>
       <p><b>שווי כולל:</b> {valuation['total_value']:.2f}</p>
       <p><b>מזומן פנוי:</b> {valuation.get('cash_balance', 0):.2f}</p>
       <p><b>שווי חשבון כולל:</b> {valuation.get('account_total_value', valuation['total_value']):.2f}</p>

@@ -22,7 +22,7 @@ const SAVINGS_TRACKS = {
 };
 const DEFAULT_PROFILE = {
   display_name: "", risk_profile: "balanced", investment_horizon: "medium",
-  investment_goal: "long_term_growth", base_currency: "ILS",
+  investment_goal: "long_term_growth", base_currency: "ILS", default_broker: "",
 };
 
 const app = initializeApp(firebaseConfig);
@@ -302,12 +302,16 @@ function renderChart(holdings, cash, financialAssets = {}) {
           ? (holding.sector || holding.category || "סקטור לא ידוע")
           : allocationMode === "market"
             ? (holding.country || holding.market || holding.exchange || "שוק לא ידוע")
-            : displayLabel(ticker, holding);
+            : allocationMode === "broker"
+              ? (holding.broker || "ברוקר לא ידוע")
+              : displayLabel(ticker, holding);
       addValue(label, holding.market_value);
     }
   }
   if (cash > 0) {
-    const cashLabel = allocationMode === "currency" ? (currentProfile.base_currency || "ILS") : "מזומן פנוי";
+    const cashLabel = allocationMode === "currency" ? (currentProfile.base_currency || "ILS")
+      : allocationMode === "broker" ? (currentProfile.default_broker || "ברוקר לא ידוע")
+        : "מזומן פנוי";
     addValue(cashLabel, cash);
   }
   for (const asset of Object.values(financialAssets)) {
@@ -316,7 +320,8 @@ function renderChart(holdings, cash, financialAssets = {}) {
       const label = allocationMode === "currency" ? "ILS"
         : allocationMode === "sector" ? "חיסכון ארוך טווח"
           : allocationMode === "market" ? "ישראל — קופת גמל"
-            : (asset.name || "קופת גמל");
+            : allocationMode === "broker" ? (asset.provider || "קופת גמל")
+              : (asset.name || "קופת גמל");
       addValue(label, value);
     }
   }
@@ -477,8 +482,9 @@ function renderHoldings(holdings) {
     const originalAverage = ["USD", "EUR"].includes(quoteCurrency)
       ? `ממוצע ${formatQuoteMoney(holding.buy_price, quoteCurrency)} · `
       : "";
+    const brokerTag = holding.broker ? `<small class="broker-tag">${escapeHtml(holding.broker)}</small>` : "";
     row.innerHTML = `
-      <span class="asset-cell"><strong>${displayLabelHtml(ticker, holding)}</strong><small>${formatQuantity(holding.quantity)} יח' · ${originalAverage}בסיס מדויק ${formatMoney(holding.exact_unit_cost_account_currency ?? holding.buy_price_account_currency ?? holding.buy_price)}</small></span>
+      <span class="asset-cell"><strong>${displayLabelHtml(ticker, holding)}</strong>${brokerTag}<small>${formatQuantity(holding.quantity)} יח' · ${originalAverage}בסיס מדויק ${formatMoney(holding.exact_unit_cost_account_currency ?? holding.buy_price_account_currency ?? holding.buy_price)}</small></span>
       <span class="holding-value" data-label="שווי">${holding.market_value == null ? "לא זמין" : formatMoney(holding.market_value)}</span>
       <span class="holding-value ${trendClass(gain)}" data-label="רווח/הפסד">${gain == null ? "—" : `${gain >= 0 ? "+" : ""}${formatMoney(gain)}<small class="holding-return-pct">${gainPct == null ? "" : `${gainPct >= 0 ? "+" : ""}${Number(gainPct).toFixed(2)}%`}</small>${fxImpact}<small class="gain-period">${gainPeriod}</small>`}</span>
       <span class="holding-value ${trendClass(primaryChange?.[1])}" data-label="שינוי">${primaryChange ? `${escapeHtml(primaryChange[0])}: ${primaryChange[1] >= 0 ? "+" : ""}${Number(primaryChange[1]).toFixed(1)}%` : "—"}${extraChanges}${sourceText}</span>`;
@@ -707,8 +713,10 @@ function populateProfileForm() {
   $("profile-horizon").value = currentProfile.investment_horizon;
   $("profile-goal").value = currentProfile.investment_goal || "";
   $("profile-currency").value = currentProfile.base_currency;
+  $("profile-default-broker").value = currentProfile.default_broker || "";
   const labels = { conservative: "שמרני", balanced: "מאוזן", aggressive: "אגרסיבי", short: "קצר", medium: "בינוני", long: "ארוך" };
-  $("profile-summary").innerHTML = `<strong>${escapeHtml(currentProfile.display_name || "הפרופיל שלי")}</strong><span>סיכון: ${escapeHtml(labels[currentProfile.risk_profile] || currentProfile.risk_profile)} · טווח: ${escapeHtml(labels[currentProfile.investment_horizon] || currentProfile.investment_horizon)} · מטבע בסיס: ${escapeHtml(currentProfile.base_currency || "ILS")}</span><small>${escapeHtml(currentProfile.investment_goal || "לא הוגדרה מטרה אישית")}</small>`;
+  const brokerLine = currentProfile.default_broker ? ` · ברוקר: ${escapeHtml(currentProfile.default_broker)}` : "";
+  $("profile-summary").innerHTML = `<strong>${escapeHtml(currentProfile.display_name || "הפרופיל שלי")}</strong><span>סיכון: ${escapeHtml(labels[currentProfile.risk_profile] || currentProfile.risk_profile)} · טווח: ${escapeHtml(labels[currentProfile.investment_horizon] || currentProfile.investment_horizon)} · מטבע בסיס: ${escapeHtml(currentProfile.base_currency || "ILS")}${brokerLine}</span><small>${escapeHtml(currentProfile.investment_goal || "לא הוגדרה מטרה אישית")}</small>`;
   const hasProfile = Boolean(currentUserData.profile);
   $("profile-editor").classList.toggle("hidden", hasProfile && !profileEditing);
   $("profile-summary").classList.toggle("hidden", !hasProfile || profileEditing);
@@ -729,6 +737,7 @@ $("profile-save-btn").addEventListener("click", async () => {
     investment_horizon: $("profile-horizon").value,
     investment_goal: $("profile-goal").value.trim(),
     base_currency: $("profile-currency").value,
+    default_broker: $("profile-default-broker").value.trim(),
   };
   try {
     await updateDoc(doc(db, "users", currentTelegramId), { profile });
@@ -770,12 +779,17 @@ $("cash-set-btn").addEventListener("click", () => changeCash("set"));
 
 const AGOROT_SECURITY_CODES = new Set(["1215771", "1144401", "5112628", "5141189"]);
 
+$("web-buy-diff-broker").addEventListener("change", (event) => {
+  $("web-buy-broker-field").classList.toggle("hidden", !event.target.checked);
+});
+
 $("web-buy-btn").addEventListener("click", async () => {
   const ticker = $("web-buy-ticker").value.trim().toUpperCase();
   const name = $("web-buy-name").value.trim();
   const quantity = Number($("web-buy-qty").value);
   const displayedPrice = Number($("web-buy-price").value);
   const buyFxRate = $("web-buy-fx").value ? Number($("web-buy-fx").value) : null;
+  const broker = $("web-buy-diff-broker").checked ? $("web-buy-broker").value.trim() : "";
   if (!ticker || !(quantity > 0) || !(displayedPrice > 0) || (buyFxRate != null && !(buyFxRate > 0))) {
     showMessage("web-buy-message", "נא להזין טיקר, כמות ומחיר תקינים.", false);
     return;
@@ -786,6 +800,7 @@ $("web-buy-btn").addEventListener("click", async () => {
     const data = await submitPortfolioRequest({
       type: "buy", ticker, name, quantity, buy_price: buyPrice,
       ...(buyFxRate ? { buy_fx_rate: buyFxRate } : {}),
+      ...(broker ? { broker } : {}),
     });
     showMessage("web-buy-message", data.message || "הקנייה נוספה.", true);
     $("web-buy-ticker").value = "";
@@ -793,6 +808,9 @@ $("web-buy-btn").addEventListener("click", async () => {
     $("web-buy-qty").value = "";
     $("web-buy-price").value = "";
     $("web-buy-fx").value = "";
+    $("web-buy-diff-broker").checked = false;
+    $("web-buy-broker").value = "";
+    $("web-buy-broker-field").classList.add("hidden");
   } catch (error) {
     showMessage("web-buy-message", error.message || "הקנייה לא בוצעה.", false);
   } finally {

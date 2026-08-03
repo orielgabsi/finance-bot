@@ -46,6 +46,7 @@ DEFAULT_PROFILE = {
     "investment_horizon": "medium",
     "investment_goal": "long_term_growth",
     "base_currency": "ILS",
+    "default_broker": "",
 }
 
 
@@ -264,7 +265,7 @@ def get_user_ids_with_financial_assets():
 
 def _buy_in_transaction(
     transaction, user_ref, ticker, quantity, buy_price, name,
-    tx_type=None, buy_fx_rate=None, reported_total_cost=None,
+    tx_type=None, buy_fx_rate=None, reported_total_cost=None, broker=None,
 ):
     snapshot = user_ref.get(transaction=transaction)
     data = snapshot.to_dict() if snapshot.exists else {}
@@ -298,6 +299,9 @@ def _buy_in_transaction(
     resolved_name = name or existing.get("name")
     if resolved_name:
         holding["name"] = str(resolved_name).strip()
+    resolved_broker = broker or existing.get("broker")
+    if resolved_broker:
+        holding["broker"] = str(resolved_broker).strip()[:60]
     portfolio[ticker] = holding
 
     updates = {
@@ -319,13 +323,14 @@ def _buy_in_transaction(
             "price": buy_price,
             "buy_fx_rate": buy_fx_rate,
             "reported_total_cost": reported_total_cost,
+            "broker": holding.get("broker"),
             "type": tx_type,
             "timestamp": firestore.SERVER_TIMESTAMP,
         })
     return holding
 
 
-def add_holding(user_id, ticker, quantity, buy_price, name=None):
+def add_holding(user_id, ticker, quantity, buy_price, name=None, broker=None):
     """`name` is an optional human-readable security name (e.g. from an
     Israeli brokerage export's "שם נייר" column, since the ticker there is
     often just an opaque numeric security number). Kept alongside the raw
@@ -340,13 +345,13 @@ def add_holding(user_id, ticker, quantity, buy_price, name=None):
     user_ref = db.collection("users").document(user_id)
     transaction = db.transaction()
     return firestore.transactional(_buy_in_transaction)(
-        transaction, user_ref, ticker, quantity, buy_price, name, None, None
+        transaction, user_ref, ticker, quantity, buy_price, name, None, None, None, broker
     )
 
 
 def record_buy(
     user_id, ticker, quantity, buy_price, name=None, tx_type="buy",
-    buy_fx_rate=None, reported_total_cost=None,
+    buy_fx_rate=None, reported_total_cost=None, broker=None,
 ):
     """Atomically updates a holding and writes its transaction record."""
     ticker = str(ticker).strip().upper()
@@ -358,7 +363,7 @@ def record_buy(
     transaction = db.transaction()
     return firestore.transactional(_buy_in_transaction)(
         transaction, user_ref, ticker, quantity, buy_price, name, tx_type,
-        buy_fx_rate, reported_total_cost,
+        buy_fx_rate, reported_total_cost, broker,
     )
 
 
@@ -793,6 +798,7 @@ def update_user_profile(user_id, profile):
     merged = {**get_user_profile(user_id), **clean}
     merged["display_name"] = str(merged.get("display_name", "")).strip()[:80]
     merged["investment_goal"] = str(merged.get("investment_goal", "")).strip()[:200]
+    merged["default_broker"] = str(merged.get("default_broker", "")).strip()[:60]
     if merged["risk_profile"] not in {"conservative", "balanced", "aggressive"}:
         raise ValueError("פרופיל הסיכון אינו תקין.")
     if merged["investment_horizon"] not in {"short", "medium", "long"}:

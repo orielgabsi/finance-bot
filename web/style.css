@@ -193,6 +193,9 @@ code { direction: ltr; unicode-bidi: isolate; color: #bdeedc; background: rgba(7
 .holding-header { color: var(--muted); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; }
 .asset-cell strong, .asset-cell small { display: block; }
 .asset-cell small { color: var(--muted); margin-top: 3px; font-size: 0.72rem; }
+.broker-tag { display: inline-flex !important; margin-top: 4px !important; padding: 2px 8px; border-radius: 999px; color: #b9d9ff; background: rgba(93, 169, 255, 0.10); border: 1px solid rgba(93, 169, 255, 0.20); font-size: 0.66rem; }
+.checkbox-label { display: flex; align-items: center; gap: 8px; margin: 14px 0 4px; color: var(--muted); font-size: 0.86rem; cursor: pointer; }
+.checkbox-label input[type="checkbox"] { width: auto; min-height: 0; }
 .holding-value .period-change { display: block; margin-top: 4px; color: var(--muted); font-size: 0.66rem; }
 .holding-value .period-change.positive { color: var(--accent); }
 .holding-value .period-change.negative { color: var(--danger); }

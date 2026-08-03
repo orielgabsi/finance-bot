@@ -92,6 +92,7 @@ def compute_portfolio_value(portfolio: dict, prices: dict, cash_balance: float =
             "current_fx_rate": current_fx_rate,
             "buy_date": details.get("buy_date"),
             "name": get_holding_name(ticker, details),
+            "broker": details.get("broker") or None,
             "cost_basis": cost,
             "current_price": price,
             "current_price_account_currency": price * unit_scale if price is not None else None,
@@ -221,17 +222,33 @@ def _attach_benchmark_comparison(valuation: dict) -> dict:
     return valuation
 
 
+def _apply_default_broker(valuation: dict, profile: dict | None) -> dict:
+    """A holding only stores its own `broker` when it differs from the
+    investor's usual one (e.g. the website's "different broker" checkbox).
+    Everything else is assumed to sit with the default broker from their
+    profile, so every holding always shows *some* broker without forcing a
+    choice on every single buy."""
+    default_broker = str((profile or {}).get("default_broker") or "").strip()
+    if default_broker:
+        for holding in valuation.get("holdings", {}).values():
+            if not holding.get("broker"):
+                holding["broker"] = default_broker
+    return valuation
+
+
 def get_portfolio_valuation(user_id: str) -> dict:
     data = connect_firebase.get_user_data(user_id) or {}
     portfolio = data.get("portfolio") or {}
     names = {ticker: get_holding_name(ticker, details) for ticker, details in portfolio.items()}
     prices = price_service.get_current_prices_full(list(portfolio.keys()), names)
-    account_currency = (data.get("profile") or {}).get("base_currency") or "ILS"
+    profile = data.get("profile") or {}
+    account_currency = profile.get("base_currency") or "ILS"
     price_service.add_account_currency_scales(prices, account_currency)
     cash_balance = data.get("cash_balance", 0)
     valuation = compute_portfolio_value(portfolio, prices, cash_balance)
     _attach_benchmark_comparison(valuation)
-    return _attach_financial_assets(user_id, valuation)
+    valuation = _attach_financial_assets(user_id, valuation)
+    return _apply_default_broker(valuation, profile)
 
 
 def get_cached_portfolio_valuation(user_id: str) -> dict | None:
@@ -282,6 +299,7 @@ def get_cached_portfolio_valuation(user_id: str) -> dict | None:
     )
     _attach_benchmark_comparison(reconciled)
     _attach_financial_assets(user_id, reconciled)
+    _apply_default_broker(reconciled, data.get("profile"))
     old_symbols = set(cached_holdings)
     new_symbols = set(portfolio)
     holdings_changed = old_symbols != new_symbols or any(

@@ -2608,6 +2608,7 @@ def _handle_web_portfolio_request(request_id, telegram_id, request_data, doc_ref
                 request_data.get("buy_price"),
                 str(request_data.get("name") or "").strip() or None,
                 buy_fx_rate=request_data.get("buy_fx_rate"),
+                broker=str(request_data.get("broker") or "").strip() or None,
             )
             result = {"ticker": ticker, **holding}
             message = "הקנייה נוספה לתיק וסונכרנה עם הבוט."

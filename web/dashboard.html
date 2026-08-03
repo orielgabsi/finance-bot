@@ -71,6 +71,7 @@
             <button class="compact ghost allocation-tab" data-mode="currency">מטבעות</button>
             <button class="compact ghost allocation-tab" data-mode="sector">סקטורים</button>
             <button class="compact ghost allocation-tab" data-mode="market">מדינות ושווקים</button>
+            <button class="compact ghost allocation-tab" data-mode="broker">ברוקרים</button>
           </div>
           <div id="pie-chart-frame" class="chart-frame allocation-frame"><canvas id="pie-chart"></canvas></div>
           <div id="empty-msg" class="empty-state hidden">אין עדיין ניירות מתומחרים. הוסף החזקה בבוט או רענן מחירים.</div>
@@ -139,6 +140,11 @@
                 <div><label for="web-buy-fx">שער מט״ח ביום הקנייה</label><input id="web-buy-fx" type="number" min="0.000001" step="any" placeholder="אופציונלי, למשל 3.65"></div>
               </div>
               <p class="method-note">בנייר ישראלי הזן מחיר בשקלים, לא באגורות. בנייר זר הזן מחיר במטבע המסחר; שער המט״ח בקנייה מאפשר להפריד בין תשואת הנכס להשפעת המט״ח.</p>
+              <label class="checkbox-label"><input type="checkbox" id="web-buy-diff-broker"> ברוקר שונה מברירת המחדל</label>
+              <div id="web-buy-broker-field" class="hidden">
+                <label for="web-buy-broker">ברוקר</label>
+                <input id="web-buy-broker" type="text" maxlength="60" placeholder="למשל: Interactive Brokers">
+              </div>
               <button id="web-buy-btn">אשר הוספת קנייה</button>
               <div id="web-buy-message" class="form-message" role="status"></div>
             </section>
@@ -192,6 +198,9 @@
             </div>
             <label for="profile-goal">מטרת השקעה</label>
             <input id="profile-goal" type="text" maxlength="200" placeholder="למשל: צמיחה ארוכת טווח והכנסה מדיבידנדים">
+            <label for="profile-default-broker">ברוקר ברירת מחדל</label>
+            <input id="profile-default-broker" type="text" maxlength="60" placeholder="למשל: אלטשולר שחם">
+            <p class="method-note">כל קנייה חדשה תשויך לברוקר הזה אוטומטית, אלא אם מסמנים "ברוקר שונה" בטופס הקנייה.</p>
             <button id="profile-save-btn">שמור התאמה אישית</button>
           </div>
           <button id="profile-edit-btn" class="secondary compact hidden">עריכת הפרופיל</button>

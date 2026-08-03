@@ -16,7 +16,7 @@ service cloud.firestore {
       return profile is map
         && profile.keys().hasOnly([
           'display_name', 'risk_profile', 'investment_horizon',
-          'investment_goal', 'base_currency'
+          'investment_goal', 'base_currency', 'default_broker'
         ])
         && profile.display_name is string
         && profile.display_name.size() <= 80
@@ -24,7 +24,9 @@ service cloud.firestore {
         && profile.investment_horizon in ['short', 'medium', 'long']
         && profile.investment_goal is string
         && profile.investment_goal.size() <= 200
-        && profile.base_currency in ['ILS', 'USD', 'EUR'];
+        && profile.base_currency in ['ILS', 'USD', 'EUR']
+        && (!('default_broker' in profile)
+            || (profile.default_broker is string && profile.default_broker.size() <= 60));
     }
 
     function validFinancialGoal(goal) {
@@ -163,7 +165,7 @@ service cloud.firestore {
         allow read: if ownsTelegramAccount(telegramId);
         allow create: if ownsTelegramAccount(telegramId)
           && request.resource.data.keys().hasOnly([
-            'status', 'type', 'ticker', 'name', 'quantity', 'buy_price',
+            'status', 'type', 'ticker', 'name', 'quantity', 'buy_price', 'broker',
             'buy_fx_rate', 'payload_json', 'image_data_url', 'rows_json', 'created_at'
           ])
           && request.resource.data.status == 'pending'
@@ -185,7 +187,10 @@ service cloud.firestore {
               && (!('buy_fx_rate' in request.resource.data)
                   || (request.resource.data.buy_fx_rate is number
                       && request.resource.data.buy_fx_rate > 0
-                      && request.resource.data.buy_fx_rate < 1000)))
+                      && request.resource.data.buy_fx_rate < 1000))
+              && (!('broker' in request.resource.data)
+                  || (request.resource.data.broker is string
+                      && request.resource.data.broker.size() <= 60)))
             ||
             (request.resource.data.type == 'import'
               && request.resource.data.payload_json is string

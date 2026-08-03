@@ -32,7 +32,8 @@ def build_email_html(valuation: dict, recommendation_text: str) -> str:
         ticker_html = f"<bdi>{html.escape(ticker)}</bdi>"
         label = f"<bdi>{html.escape(name)}</bdi> ({ticker_html})" if name else ticker_html
         value_str = f"{h['market_value']:.2f}" if h["market_value"] is not None else "N/A"
-        row_parts.append(f"<tr><td>{label}</td><td>{h['quantity']}</td><td>{value_str}</td></tr>")
+        broker_str = html.escape(h.get("broker") or "—")
+        row_parts.append(f"<tr><td>{label}</td><td>{h['quantity']}</td><td>{value_str}</td><td>{broker_str}</td></tr>")
     holding_rows = "".join(row_parts)
     recommendation_text = html.escape(recommendation_text)
     return f"""
@@ -48,7 +49,7 @@ def build_email_html(valuation: dict, recommendation_text: str) -> str:
       <p><b>עלות כוללת:</b> {valuation['total_cost']:.2f}</p>
       <p><b>רווח/הפסד:</b> {valuation['total_gain_loss']:.2f} ({valuation['total_gain_loss_pct']:.1f}%)</p>
       <table border="1" cellpadding="6" style="border-collapse: collapse;">
-        <tr><th>טיקר</th><th>כמות</th><th>שווי נוכחי</th></tr>
+        <tr><th>טיקר</th><th>כמות</th><th>שווי נוכחי</th><th>ברוקר</th></tr>
         {holding_rows}
       </table>
       <h3>סקירה שבועית</h3>

@@ -44,7 +44,7 @@ def _trend_color(value) -> str:
 
 def _stat_cell(label: str, value: str, color: str = TEXT) -> str:
     return f"""
-    <td style="padding:14px 10px; background:{CARD_BG}; border:1px solid {BORDER}; border-radius:12px;">
+    <td class="stat-cell" style="padding:14px 10px; background:{CARD_BG}; border:1px solid {BORDER}; border-radius:12px;">
       <div style="color:{MUTED}; font-size:11px; margin-bottom:6px;">{html.escape(label)}</div>
       <div style="color:{color}; font-size:16px; font-weight:700;">{value}</div>
     </td>"""
@@ -83,21 +83,23 @@ def build_email_html(valuation: dict, recommendation_text: str, profile: dict | 
             f"</tr>"
         )
     holdings_table = f"""
-    <table width="100%" style="border-collapse:collapse; margin-top:8px;">
+    <div class="scroll-x" style="overflow-x:auto;">
+    <table width="100%" style="border-collapse:collapse; margin-top:8px; min-width:480px;">
       <tr style="color:{MUTED}; font-size:11px; text-transform:uppercase;">
         <td style="padding:6px 8px;">נייר</td><td style="padding:6px 8px;">כמות</td>
         <td style="padding:6px 8px;">שווי</td><td style="padding:6px 8px;">רווח/הפסד</td>
         <td style="padding:6px 8px;">ברוקר</td>
       </tr>
       {"".join(holding_rows)}
-    </table>"""
+    </table>
+    </div>"""
 
     gain = valuation.get("total_gain_loss")
     gain_pct = valuation.get("total_gain_loss_pct")
     gain_str = f"{'+' if gain is not None and gain >= 0 else ''}{_money(gain)} ({gain_pct:+.1f}%)" if gain is not None else "—"
 
     stats_row = f"""
-    <table width="100%" style="border-collapse:separate; border-spacing:8px 0;">
+    <table class="stat-row" width="100%" style="border-collapse:separate; border-spacing:8px 0;">
       <tr>
         {_stat_cell("שווי חשבון כולל", _money(valuation.get("account_total_value", valuation.get("total_value"))))}
         {_stat_cell("רווח/הפסד בתיק", gain_str, _trend_color(gain))}
@@ -149,8 +151,25 @@ def build_email_html(valuation: dict, recommendation_text: str, profile: dict | 
 
     recommendation_html = html.escape(recommendation_text).replace("\n", "<br>")
 
-    return f"""
-    <div style="font-family:'Segoe UI', Arial, Helvetica, sans-serif; direction:rtl; text-align:right; background:{BG}; color:{TEXT}; padding:24px; max-width:640px; margin:0 auto;">
+    return f"""<!DOCTYPE html>
+<html dir="rtl" lang="he">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ההמלצה השבועית שלך</title>
+<style>
+  body {{ margin:0; }}
+  @media (max-width: 480px) {{
+    .email-wrap {{ padding:14px !important; }}
+    .stat-row, .stat-row tr {{ display:block !important; width:100% !important; }}
+    .stat-cell {{ display:block !important; width:100% !important; box-sizing:border-box; margin-bottom:8px; }}
+    .cta-btn {{ display:block !important; width:100% !important; box-sizing:border-box; }}
+    h2 {{ font-size:17px !important; }}
+  }}
+</style>
+</head>
+<body style="background:{BG};">
+    <div class="email-wrap" style="font-family:'Segoe UI', Arial, Helvetica, sans-serif; direction:rtl; text-align:right; background:{BG}; color:{TEXT}; padding:24px; max-width:640px; margin:0 auto; box-sizing:border-box;">
       <table width="100%" style="border-collapse:collapse; margin-bottom:20px;"><tr>
         <td width="48" style="padding:0;">
           <img src="{BOT_AVATAR_URL}" width="48" height="48" alt="FinPilot" style="display:block; border-radius:50%;">
@@ -175,7 +194,7 @@ def build_email_html(valuation: dict, recommendation_text: str, profile: dict | 
       </div>
 
       <div style="text-align:center; margin:28px 0 8px;">
-        <a href="{DASHBOARD_URL}" style="display:inline-block; background:{ACCENT}; color:#03120d; font-weight:700; text-decoration:none; padding:12px 28px; border-radius:10px; font-size:14px;">
+        <a href="{DASHBOARD_URL}" class="cta-btn" style="display:inline-block; background:{ACCENT}; color:#03120d; font-weight:700; text-decoration:none; padding:12px 28px; border-radius:10px; font-size:14px;">
           צפה בדשבורד המלא
         </a>
       </div>
@@ -184,6 +203,8 @@ def build_email_html(valuation: dict, recommendation_text: str, profile: dict | 
         {DISCLAIMER}
       </p>
     </div>
+</body>
+</html>
     """
 
 

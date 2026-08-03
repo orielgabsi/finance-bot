@@ -1,7 +1,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
 import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import {
-  getFirestore, doc, getDoc, updateDoc, addDoc, onSnapshot, collection,
+  getFirestore, doc, getDoc, setDoc, updateDoc, addDoc, onSnapshot, collection,
   query, orderBy, limit, serverTimestamp, writeBatch, runTransaction, deleteDoc,
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
@@ -86,6 +86,54 @@ $("link-btn").addEventListener("click", async () => {
     $("link-error").textContent = "החיבור נכשל — הקוד שגוי, נוצל כבר או שפג תוקפו. שלח /link שוב בבוט.";
     console.error(error);
   }
+});
+
+$("skip-link-btn").addEventListener("click", async () => {
+  const user = auth.currentUser;
+  if (!user) return;
+  $("link-error").textContent = "";
+  const skipBtn = $("skip-link-btn");
+  skipBtn.textContent = "יוצר חשבון…";
+
+  let settled = false;
+  let accountUnsubscribe = null;
+  let signupUnsubscribe = null;
+  const finish = () => {
+    settled = true;
+    if (accountUnsubscribe) accountUnsubscribe();
+    if (signupUnsubscribe) signupUnsubscribe();
+  };
+
+  accountUnsubscribe = onSnapshot(doc(db, "account_links", user.uid), (snap) => {
+    if (settled || !snap.exists()) return;
+    finish();
+    showLinkedStateOrPrompt(user.uid);
+  });
+  signupUnsubscribe = onSnapshot(doc(db, "web_signups", user.uid), (snap) => {
+    if (settled || !snap.exists()) return;
+    if (snap.data().status === "failed") {
+      finish();
+      skipBtn.textContent = "המשך בלי לחבר את הבוט";
+      $("link-error").textContent = "יצירת החשבון נכשלה. נסה שוב בעוד רגע.";
+    }
+  });
+
+  try {
+    await setDoc(doc(db, "web_signups", user.uid), { status: "pending", created_at: serverTimestamp() });
+  } catch (error) {
+    finish();
+    skipBtn.textContent = "המשך בלי לחבר את הבוט";
+    $("link-error").textContent = "משהו השתבש. נסה שוב.";
+    console.error(error);
+    return;
+  }
+
+  setTimeout(() => {
+    if (settled) return;
+    finish();
+    skipBtn.textContent = "המשך בלי לחבר את הבוט";
+    $("link-error").textContent = "לוקח יותר זמן מהצפוי — נסה לרענן את הדף בעוד רגע.";
+  }, 20000);
 });
 
 async function showLinkedStateOrPrompt(uid) {

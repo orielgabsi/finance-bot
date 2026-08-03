@@ -2697,6 +2697,14 @@ def _handle_web_portfolio_request(request_id, telegram_id, request_data, doc_ref
         )
 
 
+def _handle_web_signup(request_id, uid, request_data, doc_ref):
+    try:
+        telegram_id = connect_firebase.complete_web_signup(uid)
+        connect_firebase.mark_web_signup_done(doc_ref, telegram_id)
+    except Exception as exc:
+        connect_firebase.mark_web_signup_failed(doc_ref, _safe_error(exc))
+
+
 def _start_ai_request_listener():
     """A freshly-deployed Firestore collection-group index can take a few
     minutes to finish building; querying before it's ready raises
@@ -2722,6 +2730,18 @@ def _start_portfolio_request_listener():
             return
         except Exception as exc:
             print(f"Portfolio request listener not ready ({_safe_error(exc)}); retrying in 30s...")
+            time.sleep(30)
+
+
+def _start_web_signup_listener():
+    while True:
+        try:
+            next(iter(connect_firebase.db.collection("web_signups").limit(1).stream()), None)
+            connect_firebase.watch_pending_web_signups(_handle_web_signup)
+            print("Web signup listener (continue without Telegram) started.")
+            return
+        except Exception as exc:
+            print(f"Web signup listener not ready ({_safe_error(exc)}); retrying in 30s...")
             time.sleep(30)
 
 
@@ -2764,6 +2784,7 @@ if __name__ == "__main__":
     threading.Thread(target=_start_health_check_server, daemon=True).start()
     threading.Thread(target=_start_ai_request_listener, daemon=True).start()
     threading.Thread(target=_start_portfolio_request_listener, daemon=True).start()
+    threading.Thread(target=_start_web_signup_listener, daemon=True).start()
     threading.Thread(target=_start_savings_refresh_loop, daemon=True).start()
 
     print("Telegram bot is running...")

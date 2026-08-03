@@ -90,6 +90,22 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // Lets someone use the full site without a Telegram account. The bot
+    // process (Admin SDK) is the only thing that ever creates the matching
+    // account_links/{uid} — this collection just signals the request; the
+    // browser waits for account_links/{uid} to appear the same way it does
+    // after the code-based link flow.
+    match /web_signups/{uid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow create: if signedIn()
+        && request.auth.uid == uid
+        && !exists(/databases/$(database)/documents/account_links/$(uid))
+        && request.resource.data.keys().hasOnly(['status', 'created_at'])
+        && request.resource.data.status == 'pending'
+        && request.resource.data.created_at == request.time;
+      allow update, delete: if false;
+    }
+
     match /users/{telegramId} {
       allow read: if ownsTelegramAccount(telegramId);
 

@@ -34,6 +34,11 @@ db = firestore.client()
 # a restart from launching many Playwright/Chromium process trees at once.
 _ai_request_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="web-ai")
 _portfolio_request_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="web-portfolio")
+_web_signup_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="web-signup")
+
+# Prefix marks a user record as website-only (no linked Telegram chat), so it
+# can never collide with a real numeric Telegram user id.
+WEB_ONLY_ID_PREFIX = "web_"
 
 DEFAULT_PROFILE = {
     "display_name": "",
@@ -944,6 +949,66 @@ def answer_portfolio_request(doc_ref, status, message, result=None):
     if result is not None:
         payload["result"] = result
     doc_ref.update(payload)
+
+
+def watch_pending_web_signups(on_request):
+    """Lets someone use the full website (portfolio, AI, everything) without
+    ever opening Telegram. The browser can't create its own users/{id} or
+    account_links/{uid} documents directly (firestore.rules blocks that on
+    purpose — those paths are otherwise only ever written by a trusted
+    linking handshake or the bot itself), so — same relay pattern as AI/buy
+    requests — it drops a request here and this admin-privileged process
+    provisions a synthetic "web_<uid>" user record and links it."""
+    def _claim_and_run(doc_ref):
+        transaction = db.transaction()
+
+        @firestore.transactional
+        def _claim(transaction):
+            snapshot = doc_ref.get(transaction=transaction)
+            data = snapshot.to_dict() or {}
+            if data.get("status") != "pending":
+                return None
+            transaction.update(doc_ref, {
+                "status": "processing",
+                "processing_started_at": firestore.SERVER_TIMESTAMP,
+            })
+            return data
+
+        data = _claim(transaction)
+        if data is not None:
+            on_request(doc_ref.id, doc_ref.id, data, doc_ref)
+
+    def _callback(col_snapshot, changes, read_time):
+        for change in changes:
+            if change.type.name != "ADDED":
+                continue
+            data = change.document.to_dict() or {}
+            if data.get("status") == "pending":
+                _web_signup_executor.submit(_claim_and_run, change.document.reference)
+
+    query = db.collection("web_signups").where(filter=FieldFilter("status", "==", "pending"))
+    return query.on_snapshot(_callback)
+
+
+def mark_web_signup_done(doc_ref, telegram_id):
+    doc_ref.update({"status": "done", "telegram_id": telegram_id, "completed_at": firestore.SERVER_TIMESTAMP})
+
+
+def mark_web_signup_failed(doc_ref, error_message):
+    doc_ref.update({"status": "failed", "error": str(error_message)[:500]})
+
+
+def complete_web_signup(uid):
+    """Provisions a website-only user and links it to the given Firebase
+    uid, returning the new synthetic telegram_id."""
+    telegram_id = f"{WEB_ONLY_ID_PREFIX}{uid}"
+    create_user_document(telegram_id)
+    db.collection("account_links").document(uid).set({
+        "telegram_id": telegram_id,
+        "used_code": None,
+        "linked_at": firestore.SERVER_TIMESTAMP,
+    })
+    return telegram_id
 
 
 def save_fundamental_analysis(user_id, analysis):

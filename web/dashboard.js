@@ -322,7 +322,7 @@ function renderChart(holdings, cash, financialAssets = {}) {
       const label = allocationMode === "currency" ? "ILS"
         : allocationMode === "sector" ? "חיסכון ארוך טווח"
           : allocationMode === "market" ? "ישראל — קופת גמל"
-            : allocationMode === "broker" ? (asset.provider || "קופת גמל")
+            : allocationMode === "broker" ? `קופת גמל — ${asset.provider || "לא ידוע"}`
               : (asset.name || "קופת גמל");
       addValue(label, value);
     }

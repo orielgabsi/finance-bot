@@ -145,7 +145,7 @@ def build_email_html(valuation: dict, recommendation_text: str, profile: dict | 
         )
 
     broker_label = html.escape(str(profile.get("default_broker") or "")).strip()
-    broker_line = f" · ברוקר ברירת מחדל: {broker_label}" if broker_label else ""
+    broker_line = f" · ברוקר ברירת מחדל לתיק המסחר: {broker_label}" if broker_label else ""
 
     recommendation_html = html.escape(recommendation_text).replace("\n", "<br>")
 

@@ -3,6 +3,7 @@ user with a saved address a plain-language portfolio update plus an AI-written,
 news-informed note. Not run by the Telegram bot process itself."""
 
 import html
+import re
 
 import connect_firebase
 import portfolio_service
@@ -60,6 +61,17 @@ def _stat_row(label: str, value: str, color: str = TEXT) -> str:
     </tr>"""
 
 
+def _format_recommendation(text: str) -> str:
+    # The LLM sometimes writes markdown-style **bold** which, since this is
+    # plain HTML (not a markdown renderer), would otherwise show up as raw
+    # asterisks in the email. Convert real **bold** pairs to <strong>, then
+    # strip any leftover/unpaired ** so nothing stray survives.
+    escaped = html.escape(text)
+    converted = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", escaped)
+    converted = converted.replace("**", "")
+    return converted.replace("\n", "<br>")
+
+
 def _section_title(text: str) -> str:
     return f'<h3 style="margin:28px 0 12px; color:{TEXT}; font-size:15px; border-right:3px solid {ACCENT}; padding-right:10px;">{html.escape(text)}</h3>'
 
@@ -100,6 +112,28 @@ def build_email_html(valuation: dict, recommendation_text: str, profile: dict | 
           </td></tr>
         </table>""")
     holdings_table = "".join(holding_cards)
+
+    # Per-broker breakdown — only worth showing once holdings actually span
+    # more than one broker, otherwise it's a redundant single-row repeat of
+    # the total above.
+    broker_totals: dict[str, float] = {}
+    for h in valuation["holdings"].values():
+        value = h.get("market_value")
+        if value is None:
+            continue
+        broker_name = (h.get("broker") or "").strip() or "לא צוין"
+        broker_totals[broker_name] = broker_totals.get(broker_name, 0) + float(value)
+
+    broker_section = ""
+    if len(broker_totals) > 1:
+        broker_rows = "".join(
+            _stat_row(broker_name, _money(amount))
+            for broker_name, amount in sorted(broker_totals.items(), key=lambda item: item[1], reverse=True)
+        )
+        broker_section = (
+            _section_title("פילוח לפי ברוקר")
+            + f'<table width="100%" style="border-collapse:collapse;">{broker_rows}</table>'
+        )
 
     gain = valuation.get("total_gain_loss")
     gain_pct = valuation.get("total_gain_loss_pct")
@@ -154,7 +188,7 @@ def build_email_html(valuation: dict, recommendation_text: str, profile: dict | 
     broker_label = html.escape(str(profile.get("default_broker") or "")).strip()
     broker_line = f" · ברוקר ברירת מחדל לתיק המסחר: {broker_label}" if broker_label else ""
 
-    recommendation_html = html.escape(recommendation_text).replace("\n", "<br>")
+    recommendation_html = _format_recommendation(recommendation_text)
 
     return f"""<!DOCTYPE html>
 <html dir="rtl" lang="he">
@@ -191,6 +225,7 @@ def build_email_html(valuation: dict, recommendation_text: str, profile: dict | 
       {_section_title("החזקות")}
       {holdings_table}
 
+      {broker_section}
       {savings_section}
       {goal_section}
 

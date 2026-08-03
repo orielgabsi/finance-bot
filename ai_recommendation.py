@@ -61,7 +61,7 @@ def _financial_assets_summary(valuation: dict) -> str:
     return "\n".join(lines) if lines else "No long-term savings instruments recorded."
 
 
-def _call_groq_with_retry(prompt: str) -> str:
+def _call_groq_with_retry(prompt: str, validate=None) -> str:
     """gpt-oss-120b is a reasoning model: its internal "thinking" tokens are
     drawn from the same max_completion_tokens budget as the visible answer,
     and how much it spends thinking is variable — measured runs on this
@@ -84,7 +84,7 @@ def _call_groq_with_retry(prompt: str) -> str:
         )
         last_response = response
         text = (response.choices[0].message.content or "").strip()
-        if text:
+        if text and (validate is None or validate(text)):
             return text
 
     finish_reason = last_response.choices[0].finish_reason if last_response else "unknown"
@@ -94,8 +94,14 @@ def _call_groq_with_retry(prompt: str) -> str:
     )
 
 
-def _call_groq_json_with_retry(prompt: str, model: str = GROQ_MODEL) -> dict:
-    """Uses Groq JSON mode and still validates locally before trusting it."""
+def _call_groq_json_with_retry(prompt: str, model: str = GROQ_MODEL, validate=None) -> dict:
+    """Uses Groq JSON mode and still validates locally before trusting it.
+
+    `validate`, if given, must return True for the parsed dict to be
+    accepted. Without it, a reasoning model that spends its whole budget
+    "thinking" can return syntactically-valid JSON with the actual answer
+    field left empty, and this would return that empty result on the
+    first attempt instead of retrying with a fresh reasoning budget."""
     client = Groq(api_key=os.environ["GROQ_API_KEY"])
     last_error = None
     for reasoning_effort in ("medium", "low"):
@@ -104,15 +110,16 @@ def _call_groq_json_with_retry(prompt: str, model: str = GROQ_MODEL) -> dict:
                 model=model,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.2,
-                max_completion_tokens=2200,
+                max_completion_tokens=3200,
                 reasoning_effort=reasoning_effort,
                 response_format={"type": "json_object"},
             )
             text = (response.choices[0].message.content or "").strip()
             if text:
                 value = json.loads(text)
-                if isinstance(value, dict):
+                if isinstance(value, dict) and (validate is None or validate(value)):
                     return value
+                last_error = RuntimeError(f"Response failed validation: {value!r}")
         except Exception as exc:
             last_error = exc
     raise RuntimeError(f"Groq did not return valid structured JSON: {last_error}")
@@ -156,7 +163,10 @@ Return JSON only:
 The final_text must be in Hebrew, concise, and must not introduce any fact that
 is absent from TRUSTED FACTS. If the draft is correct, preserve it closely."""
     try:
-        checked = _call_groq_json_with_retry(prompt, model=GROQ_VERIFIER_MODEL)
+        checked = _call_groq_json_with_retry(
+            prompt, model=GROQ_VERIFIER_MODEL,
+            validate=lambda v: "מסקנה" in str(v.get("final_text") or ""),
+        )
         final_text = str(checked.get("final_text") or "").strip()
         if final_text:
             return final_text
@@ -199,7 +209,7 @@ Investor profile:
 Recent news snippets from a live web search about their holdings:
 {market_context}
 
-Write in Hebrew, MAX 100 words total (excluding the final line), structured exactly as:
+Write in Hebrew, MAX 130 words total (excluding the final line), structured exactly as:
 - 2-3 short bullet points: how the portfolio is doing overall, plus anything
   notable from the news snippets above that's relevant to their holdings —
   by name, never by a bare ticker/security number.
@@ -208,15 +218,23 @@ Write in Hebrew, MAX 100 words total (excluding the final line), structured exac
   by name, with one short, specific, educational observation about it —
   general/educational framing (e.g. concentration risk, a relevant news
   development, worth watching), not a specific "buy/sell" instruction.
+- One bullet titled "כדאי לבדוק:" with ONE concrete, specific, personalized
+  educational suggestion the investor could look into this week — grounded
+  ONLY in their actual data above (e.g. a holding whose weight now exceeds a
+  healthy share of the priced portfolio given their risk profile, free cash
+  sitting idle relative to their stated goal/horizon, a savings instrument
+  with no recent update, or a holding with unusually large news-driven moves
+  worth a closer read). Be specific (name the holding/amount/%), not generic
+  advice like "diversify your portfolio". Still education, not a directive.
 - One final line starting with "מסקנה:" — a single-sentence, calm, factual
   takeaway (not a specific "buy/sell" instruction, since you are not a
-  licensed financial advisor).
+  licensed financial advisor). This line is REQUIRED — never omit it.
 
 Be tight — no filler, no repeated numbers, no generic disclaimers beyond the
 implicit caution in "מסקנה". Never write a bare numeric ticker/security-number
 alone anywhere in your answer — always pair it with (or replace it by) its name."""
 
-    draft = _call_groq_with_retry(prompt)
+    draft = _call_groq_with_retry(prompt, validate=lambda t: "מסקנה" in t)
     trusted_facts = (
         _holdings_summary(valuation)
         + "\nSavings:\n" + _financial_assets_summary(valuation)
@@ -277,10 +295,11 @@ FIRST ANALYST OUTPUT: {json.dumps(first, ensure_ascii=False)}
 Return JSON only with exactly the same keys as the first output, plus:
 "verified": true and "verification_notes": ["short Hebrew correction/check"].
 All user-facing prose must be Hebrew. Do not introduce new facts."""
-    checked = _call_groq_json_with_retry(verifier_prompt, model=GROQ_VERIFIER_MODEL)
     required = {"verdict", "headline", "summary", "positives", "risks", "suitability", "decision"}
-    if not required.issubset(checked):
-        raise RuntimeError("The AI verifier returned an incomplete fundamental analysis.")
+    checked = _call_groq_json_with_retry(
+        verifier_prompt, model=GROQ_VERIFIER_MODEL,
+        validate=lambda v: required.issubset(v) and bool(str(v.get("summary") or "").strip()),
+    )
     checked["verified"] = True
     checked["confidence"] = max(0, min(100, int(checked.get("confidence", 50))))
     checked["disclaimer"] = "הערכה לימודית בלבד, לא ייעוץ השקעות."
@@ -547,13 +566,14 @@ FIRST RESULT: {json.dumps(first, ensure_ascii=False)}
 Return the complete corrected JSON with the exact same keys, plus
 "verified": true and "verification_notes": ["short Hebrew audit note"].
 Do not introduce any fact or asset not present in the trusted inputs."""
-    checked = _call_groq_json_with_retry(verifier_prompt, model=GROQ_VERIFIER_MODEL)
     required = {
         "overall_verdict", "confidence", "executive_summary", "portfolio_strengths",
         "portfolio_risks", "holding_actions", "allocation_actions", "cash_plan", "next_steps",
     }
-    if not required.issubset(checked):
-        raise RuntimeError("The thinking-mode verifier returned an incomplete result.")
+    checked = _call_groq_json_with_retry(
+        verifier_prompt, model=GROQ_VERIFIER_MODEL,
+        validate=lambda v: required.issubset(v) and bool(str(v.get("executive_summary") or "").strip()),
+    )
     checked["verified"] = True
     checked["confidence"] = max(0, min(100, int(checked.get("confidence", 50))))
     checked["disclaimer"] = "הערכה לימודית בלבד, לא ייעוץ השקעות."

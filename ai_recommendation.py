@@ -209,7 +209,7 @@ Investor profile:
 Recent news snippets from a live web search about their holdings:
 {market_context}
 
-Write in Hebrew, MAX 130 words total (excluding the final line), structured exactly as:
+Write in Hebrew, MAX 170 words total (excluding the final line), structured exactly as:
 - 2-3 short bullet points: how the portfolio is doing overall, plus anything
   notable from the news snippets above that's relevant to their holdings —
   by name, never by a bare ticker/security number.
@@ -218,14 +218,23 @@ Write in Hebrew, MAX 130 words total (excluding the final line), structured exac
   by name, with one short, specific, educational observation about it —
   general/educational framing (e.g. concentration risk, a relevant news
   development, worth watching), not a specific "buy/sell" instruction.
-- One bullet titled "כדאי לבדוק:" with ONE concrete, specific, personalized
-  educational suggestion the investor could look into this week — grounded
-  ONLY in their actual data above (e.g. a holding whose weight now exceeds a
-  healthy share of the priced portfolio given their risk profile, free cash
-  sitting idle relative to their stated goal/horizon, a savings instrument
-  with no recent update, or a holding with unusually large news-driven moves
-  worth a closer read). Be specific (name the holding/amount/%), not generic
-  advice like "diversify your portfolio". Still education, not a directive.
+- TWO bullets titled "כדאי לבדוק:" (one bullet each — do not merge them),
+  each with ONE concrete, specific, personalized educational suggestion the
+  investor could look into this week — grounded ONLY in their actual data
+  above. Every bullet MUST name a specific holding, an exact amount, or an
+  exact percentage from the data — a bullet with no specific number or named
+  holding in it is not acceptable. Draw the two from DIFFERENT angles, e.g.:
+  a named holding whose weight now exceeds a healthy share of the priced
+  portfolio given their risk profile (state its % weight), free cash sitting
+  idle relative to their stated goal/horizon (state the exact cash amount),
+  a savings instrument with no recent update (name it), a holding with an
+  unusually large news-driven move worth a closer read (name it and the
+  move), or a position whose gain/loss now stands out in absolute or
+  percentage terms (name it and the number). Never fall back to unspecific
+  advice like "diversify your portfolio" or "monitor the market" — if you
+  cannot find a second genuinely distinct, specific angle, write a more
+  detailed version of the first one instead of a generic filler bullet.
+  Still education, not a directive.
 - One final line starting with "מסקנה:" — a single-sentence, calm, factual
   takeaway (not a specific "buy/sell" instruction, since you are not a
   licensed financial advisor). This line is REQUIRED — never omit it.

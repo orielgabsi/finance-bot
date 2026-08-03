@@ -1,0 +1,274 @@
+"""Shared HTML template for the weekly and monthly portfolio emails
+(weekly_recommendations.py / monthly_recommendations.py). Kept in one place
+so both stay visually consistent and mobile-safe instead of drifting."""
+
+import html
+import re
+
+DISCLAIMER = (
+    "הודעה זו נוצרה אוטומטית על ידי בינה מלאכותית למטרות מידע בלבד, ואינה מהווה "
+    "ייעוץ השקעות. קבל החלטות השקעה בהתייעצות עם איש מקצוע מוסמך."
+)
+
+# Same picture set on the Telegram bot itself, hosted from the public
+# dashboard site so email clients (which won't render inline/base64 images
+# reliably) can load it.
+BOT_AVATAR_URL = "https://finance-bot-ori19.vercel.app/bot-avatar.jpg"
+DASHBOARD_URL = "https://finance-bot-ori19.vercel.app/dashboard.html"
+
+BG = "#06101c"
+CARD_BG = "#0e1c2e"
+BORDER = "#1e3348"
+TEXT = "#edf5fb"
+MUTED = "#91a6ba"
+ACCENT = "#46d7a7"
+DANGER = "#ff7d90"
+
+
+def money(value) -> str:
+    try:
+        return f"{float(value):,.2f} ₪"
+    except (TypeError, ValueError):
+        return "—"
+
+
+def trend_color(value) -> str:
+    if value is None:
+        return TEXT
+    return ACCENT if float(value) >= 0 else DANGER
+
+
+def stat_row(label: str, value: str, color: str = TEXT) -> str:
+    # A full-width row (not a side-by-side column) so it stacks correctly
+    # on mobile without relying on the mail client honoring @media rules —
+    # several clients (notably the Gmail Android/iOS app) strip or ignore
+    # <style> media queries, so the default layout has to already be mobile-safe.
+    return f"""
+    <tr>
+      <td style="padding:0 0 8px;">
+        <table width="100%" style="border-collapse:collapse; background:{CARD_BG}; border:1px solid {BORDER}; border-radius:12px;">
+          <tr>
+            <td style="padding:12px 14px; color:{MUTED}; font-size:12px; white-space:nowrap;">{html.escape(label)}</td>
+            <td style="padding:12px 14px; color:{color}; font-size:16px; font-weight:700; text-align:left;">{value}</td>
+          </tr>
+        </table>
+      </td>
+    </tr>"""
+
+
+def format_ai_text(text: str) -> str:
+    # The LLM sometimes writes markdown-style **bold** which, since this is
+    # plain HTML (not a markdown renderer), would otherwise show up as raw
+    # asterisks in the email. Convert real **bold** pairs to <strong>, then
+    # strip any leftover/unpaired ** so nothing stray survives.
+    escaped = html.escape(text)
+    converted = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", escaped)
+    converted = converted.replace("**", "")
+    return converted.replace("\n", "<br>")
+
+
+def section_title(text: str) -> str:
+    return f'<h3 style="margin:28px 0 12px; color:{TEXT}; font-size:15px; border-right:3px solid {ACCENT}; padding-right:10px;">{html.escape(text)}</h3>'
+
+
+def bullet_list(items: list[str], color: str = TEXT) -> str:
+    """A stacked list of short points, styled like the other mobile-first
+    cards in this template (one point per line, no side-by-side columns)."""
+    if not items:
+        return ""
+    rows = "".join(
+        f'<div style="padding:8px 0; border-bottom:1px solid {BORDER}; font-size:13px; color:{color}; line-height:1.5;">{format_ai_text(str(item))}</div>'
+        for item in items
+    )
+    return f'<div style="background:{CARD_BG}; border:1px solid {BORDER}; border-radius:12px; padding:4px 14px;">{rows}</div>'
+
+
+def build_report_email_html(
+    valuation: dict,
+    recommendation_text: str,
+    profile: dict | None = None,
+    *,
+    title: str,
+    subtitle: str,
+    insight_title: str = "💡 תובנת השבוע",
+    include_savings: bool = True,
+    extra_html: str = "",
+) -> str:
+    # Names/tickers can originate from an imported spreadsheet, and the
+    # recommendation text from an LLM — escape all of it before interpolating
+    # into HTML, same as web/dashboard.js does for the same untrusted-content
+    # reason.
+    profile = profile or {}
+
+    # Each holding is its own stacked card (label/value rows) instead of a
+    # wide table — a 5-column table has no safe way to fit a narrow phone
+    # screen in email clients, since horizontal scrolling (overflow-x) isn't
+    # reliably supported in mail rendering engines the way it is in browsers.
+    holding_cards = []
+    for ticker, h in sorted(
+        valuation["holdings"].items(), key=lambda item: item[1].get("market_value") or 0, reverse=True
+    ):
+        name = h.get("name")
+        ticker_html = f"<bdi>{html.escape(ticker)}</bdi>"
+        title_html = f"<bdi>{html.escape(name)}</bdi> <span style='color:{MUTED}; font-size:11px;'>({ticker_html})</span>" if name else ticker_html
+        value_str = money(h["market_value"]) if h["market_value"] is not None else "לא זמין"
+        gain = h.get("gain_loss")
+        gain_str = f"{'+' if gain >= 0 else ''}{money(gain)}" if gain is not None else "—"
+        broker_str = html.escape(h.get("broker") or "—")
+        row_style = f"padding:3px 0; font-size:13px; color:{MUTED};"
+        holding_cards.append(f"""
+        <table width="100%" style="border-collapse:collapse; background:{CARD_BG}; border:1px solid {BORDER}; border-radius:12px; margin-bottom:8px;">
+          <tr><td style="padding:12px 14px 4px; font-size:14px; font-weight:700; color:{TEXT};">{title_html}</td></tr>
+          <tr><td style="padding:0 14px 12px;">
+            <table width="100%" style="border-collapse:collapse;">
+              <tr><td style="{row_style}">כמות</td><td style="{row_style} text-align:left;">{h['quantity']}</td></tr>
+              <tr><td style="{row_style}">שווי</td><td style="{row_style} text-align:left; color:{TEXT};">{value_str}</td></tr>
+              <tr><td style="{row_style}">רווח/הפסד</td><td style="{row_style} text-align:left; color:{trend_color(gain)};">{gain_str}</td></tr>
+              <tr><td style="{row_style}">ברוקר</td><td style="{row_style} text-align:left;">{broker_str}</td></tr>
+            </table>
+          </td></tr>
+        </table>""")
+    holdings_table = "".join(holding_cards)
+
+    # Per-broker breakdown, including free cash as its own line (cash isn't
+    # tied to a specific holding, but the user still wants to see where it
+    # sits alongside the brokers). Only worth showing once there's more than
+    # one line, otherwise it's a redundant single-row repeat of the total above.
+    broker_totals: dict[str, float] = {}
+    for h in valuation["holdings"].values():
+        value = h.get("market_value")
+        if value is None:
+            continue
+        broker_name = (h.get("broker") or "").strip() or "לא צוין"
+        broker_totals[broker_name] = broker_totals.get(broker_name, 0) + float(value)
+
+    cash_balance = valuation.get("cash_balance") or 0
+    if cash_balance > 0:
+        broker_totals["מזומן פנוי"] = broker_totals.get("מזומן פנוי", 0) + float(cash_balance)
+
+    broker_section = ""
+    if len(broker_totals) > 1:
+        broker_rows = "".join(
+            stat_row(broker_name, money(amount))
+            for broker_name, amount in sorted(broker_totals.items(), key=lambda item: item[1], reverse=True)
+        )
+        broker_section = (
+            section_title("פילוח לפי ברוקר")
+            + f'<table width="100%" style="border-collapse:collapse;">{broker_rows}</table>'
+        )
+
+    gain = valuation.get("total_gain_loss")
+    gain_pct = valuation.get("total_gain_loss_pct")
+    gain_str = f"{'+' if gain is not None and gain >= 0 else ''}{money(gain)} ({gain_pct:+.1f}%)" if gain is not None else "—"
+
+    stats_row = f"""
+    <table width="100%" style="border-collapse:collapse;">
+      {stat_row("שווי חשבון כולל", money(valuation.get("account_total_value", valuation.get("total_value"))))}
+      {stat_row("רווח/הפסד בתיק", gain_str, trend_color(gain))}
+      {stat_row("מזומן פנוי", money(valuation.get("cash_balance", 0)))}
+    </table>"""
+
+    savings_section = ""
+    financial_assets = valuation.get("financial_assets") or {}
+    if include_savings and financial_assets:
+        savings_rows = []
+        for asset in financial_assets.values():
+            name = html.escape(str(asset.get("name") or "מכשיר פיננסי"))
+            balance = money(asset.get("estimated_balance", asset.get("reported_balance", 0)))
+            asset_gain = asset.get("estimated_gain_loss")
+            asset_gain_str = f"{'+' if asset_gain is not None and asset_gain >= 0 else ''}{money(asset_gain)}" if asset_gain is not None else "—"
+            savings_rows.append(
+                f"<tr><td style='padding:8px; border-bottom:1px solid {BORDER}; font-size:13px;'>{name}</td>"
+                f"<td style='padding:8px; border-bottom:1px solid {BORDER}; font-size:13px;'>{balance}</td>"
+                f"<td style='padding:8px; border-bottom:1px solid {BORDER}; font-size:13px; color:{trend_color(asset_gain)};'>{asset_gain_str}</td></tr>"
+            )
+        savings_section = (
+            section_title(f"קופות וחסכונות · {money(valuation.get('savings_total_value', 0))}")
+            + f'<table width="100%" style="border-collapse:collapse;">{"".join(savings_rows)}</table>'
+        )
+
+    goal_section = ""
+    goal = valuation.get("financial_goal") or {}
+    goal_pct = valuation.get("financial_goal_progress_pct")
+    if goal.get("target_amount") and goal_pct is not None:
+        goal_name = html.escape(str(goal.get("name") or "היעד הפיננסי שלי"))
+        bar_pct = max(0, min(100, goal_pct))
+        goal_section = (
+            section_title(f"התקדמות ליעד: {goal_name}")
+            + f"""
+            <div style="background:{CARD_BG}; border:1px solid {BORDER}; border-radius:12px; padding:14px 16px;">
+              <table width="100%" style="border-collapse:collapse; margin-bottom:8px;"><tr>
+                <td style="font-size:13px; color:{MUTED}; padding:0;">{money(valuation.get('total_financial_value', 0))} מתוך {money(goal.get('target_amount'))}</td>
+                <td style="font-size:13px; color:{ACCENT}; font-weight:700; padding:0; text-align:left;">{goal_pct:.0f}%</td>
+              </tr></table>
+              <div style="height:10px; background:#132538; border-radius:999px; overflow:hidden;">
+                <div style="height:100%; width:{bar_pct:.0f}%; background:{ACCENT}; border-radius:999px;"></div>
+              </div>
+            </div>"""
+        )
+
+    broker_label = html.escape(str(profile.get("default_broker") or "")).strip()
+    broker_line = f" · ברוקר ברירת מחדל לתיק המסחר: {broker_label}" if broker_label else ""
+
+    recommendation_html = format_ai_text(recommendation_text)
+    title_escaped = html.escape(title)
+
+    return f"""<!DOCTYPE html>
+<html dir="rtl" lang="he">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{title_escaped}</title>
+<style>
+  body {{ margin:0; }}
+  /* Enhancement only — the layout below is already fluid/stacked by default
+     so it stays readable even in clients (e.g. the Gmail app) that ignore
+     this block entirely. */
+  @media (max-width: 480px) {{
+    .email-wrap {{ padding:14px !important; }}
+    .cta-btn {{ display:block !important; width:100% !important; box-sizing:border-box; }}
+    h2 {{ font-size:17px !important; }}
+  }}
+</style>
+</head>
+<body style="background:{BG};">
+    <div class="email-wrap" style="font-family:'Segoe UI', Arial, Helvetica, sans-serif; direction:rtl; text-align:right; background:{BG}; color:{TEXT}; padding:24px; max-width:640px; margin:0 auto; box-sizing:border-box;">
+      <table width="100%" style="border-collapse:collapse; margin-bottom:20px;"><tr>
+        <td width="48" style="padding:0;">
+          <img src="{BOT_AVATAR_URL}" width="48" height="48" alt="FinPilot" style="display:block; border-radius:50%;">
+        </td>
+        <td style="padding:0 12px 0 0; vertical-align:middle;">
+          <h2 style="margin:0; font-size:19px;">{title_escaped}</h2>
+          <div style="color:{MUTED}; font-size:12px; margin-top:2px;">{html.escape(subtitle)}{broker_line}</div>
+        </td>
+      </tr></table>
+
+      {stats_row}
+
+      {section_title("החזקות")}
+      {holdings_table}
+
+      {broker_section}
+      {savings_section}
+      {goal_section}
+
+      {section_title(insight_title)}
+      <div style="background:{CARD_BG}; border:1px solid {BORDER}; border-radius:12px; padding:16px; font-size:14px; line-height:1.6;">
+        {recommendation_html}
+      </div>
+
+      {extra_html}
+
+      <div style="text-align:center; margin:28px 0 8px;">
+        <a href="{DASHBOARD_URL}" class="cta-btn" style="display:inline-block; background:{ACCENT}; color:#03120d; font-weight:700; text-decoration:none; padding:12px 28px; border-radius:10px; font-size:14px;">
+          צפה בדשבורד המלא
+        </a>
+      </div>
+
+      <p style="color:{MUTED}; font-size:11px; line-height:1.5; margin-top:24px; border-top:1px solid {BORDER}; padding-top:14px;">
+        {DISCLAIMER}
+      </p>
+    </div>
+</body>
+</html>
+    """

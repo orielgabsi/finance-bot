@@ -2737,7 +2737,31 @@ def _start_savings_refresh_loop():
         time.sleep(6 * 60 * 60)
 
 
+def _start_health_check_server():
+    """Render's free Web Service tier requires the process to bind $PORT and
+    answer HTTP requests to be considered alive; without this the bot process
+    (which otherwise only makes outbound Telegram/Firestore connections)
+    would be treated as down. Not needed for local runs (PORT is unset)."""
+    port = os.environ.get("PORT")
+    if not port:
+        return
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    class HealthHandler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain")
+            self.end_headers()
+            self.wfile.write(b"ok")
+
+        def log_message(self, *args):
+            pass  # keep the health-check pings out of the bot's own logs
+
+    ThreadingHTTPServer(("0.0.0.0", int(port)), HealthHandler).serve_forever()
+
+
 if __name__ == "__main__":
+    threading.Thread(target=_start_health_check_server, daemon=True).start()
     threading.Thread(target=_start_ai_request_listener, daemon=True).start()
     threading.Thread(target=_start_portfolio_request_listener, daemon=True).start()
     threading.Thread(target=_start_savings_refresh_loop, daemon=True).start()

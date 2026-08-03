@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#07111f">
   <title>FinPilot — מרכז ההשקעות שלי</title>
-  <link rel="stylesheet" href="style.css?v=20260724-10">
+  <link rel="stylesheet" href="style.css?v=20260803-11">
 </head>
 <body class="dashboard-page">
   <div id="link-section" class="auth-layout">
@@ -53,7 +53,8 @@
         <article class="metric-card" data-help="יתרת הכסף שאינה מושקעת כרגע וזמינה לפעולות בחשבון המסחר."><span>מזומן פנוי</span><strong id="stat-cash">—</strong><small id="cash-share">—</small></article>
         <article class="metric-card" data-help="השווי המשוער של קופות הגמל ומכשירי החיסכון שהוספת, בנפרד מתיק המסחר."><span>קופות וחסכונות</span><strong id="stat-savings">—</strong><small>יתרה מדווחת + אומדן חודשי</small></article>
         <article class="metric-card" data-help="סכום מחירי הבסיס של הניירות המתומחרים; ממנו מחושב הרווח או ההפסד האישי."><span>עלות מתומחרת</span><strong id="stat-cost">—</strong><small>בסיס לחישוב תשואה</small></article>
-        <article class="metric-card" data-help="הרווח או ההפסד האישי מאז מחירי הבסיס שהוזנו, בשקלים ובאחוזים; אינו שינוי יומי."><span>רווח / הפסד</span><strong id="stat-gain">—</strong><small>מאז מחירי הבסיס שהוזנו</small></article>
+        <article class="metric-card" data-help="הרווח או ההפסד האישי בתיק המסחר (ניירות ערך) בלבד, מאז מחירי הבסיס שהוזנו; אינו כולל קופות וחסכונות ואינו שינוי יומי."><span>רווח / הפסד — תיק מסחר</span><strong id="stat-gain">—</strong><small>מאז מחירי הבסיס שהוזנו</small></article>
+        <article class="metric-card" data-help="הרווח או ההפסד המשוער בקופות הגמל ומכשירי החיסכון בלבד, מאז מחירי הבסיס שהוזנו לכל מכשיר; בנפרד מתיק המסחר."><span>רווח / הפסד — קופות</span><strong id="stat-savings-gain">—</strong><small>אומדן מצטבר לכל המכשירים</small></article>
         <article class="metric-card" data-help="השינוי המשוער בשווי הניירות ביום המסחר האחרון בלבד, ולא מאז הקנייה."><span>שינוי יומי</span><strong id="stat-day-change">—</strong><small>יום המסחר האחרון בלבד</small></article>
       </section>
       <div class="notice accuracy-note">שווי חשבון המסחר הוא אומדן לפי זמן המחיר ושער המטבע המוצגים. פער קטן מול הברוקר יכול לנבוע מהשהיית מחיר, תזמון מט״ח, עיגול ועמלות; חשבון הברוקר הוא המקור הקובע.</div>
@@ -231,6 +232,6 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
-  <script type="module" src="dashboard.js?v=20260724-9"></script>
+  <script type="module" src="dashboard.js?v=20260803-10"></script>
 </body>
 </html>

@@ -161,6 +161,12 @@ function renderDashboard() {
   const savingsValue = Object.values(currentFinancialAssets).reduce(
     (sum, asset) => sum + numberOrZero(asset.estimated_balance ?? asset.reported_balance), 0,
   );
+  const savingsAssetsWithGain = Object.values(currentFinancialAssets).filter((asset) => asset.estimated_gain_loss != null);
+  const savingsGain = savingsAssetsWithGain.reduce((sum, asset) => sum + numberOrZero(asset.estimated_gain_loss), 0);
+  const savingsGainBase = savingsAssetsWithGain.reduce(
+    (sum, asset) => sum + numberOrZero(asset.estimated_balance ?? asset.reported_balance) - numberOrZero(asset.estimated_gain_loss), 0,
+  );
+  const savingsGainPct = savingsGainBase > 0 ? (savingsGain / savingsGainBase) * 100 : 0;
   const accountValue = tradingAccountValue + savingsValue;
   const pricedCost = numberOrZero(valuation?.priced_cost ?? valuation?.total_cost);
   const gain = numberOrZero(valuation?.total_gain_loss);
@@ -178,6 +184,10 @@ function renderDashboard() {
   $("stat-cost").textContent = formatMoney(pricedCost);
   $("stat-gain").textContent = formatSignedMoneyAndPercent(gain, gainPct);
   setTrendClass($("stat-gain"), gain);
+  $("stat-savings-gain").textContent = savingsAssetsWithGain.length
+    ? formatSignedMoneyAndPercent(savingsGain, savingsGainPct)
+    : "אין עדיין נתונים";
+  setTrendClass($("stat-savings-gain"), savingsGain);
   $("stat-day-change").textContent = `${dayChange >= 0 ? "+" : ""}${formatMoney(dayChange)}`;
   setTrendClass($("stat-day-change"), dayChange);
   $("cash-share").textContent = tradingAccountValue > 0 ? `${(cash / tradingAccountValue * 100).toFixed(1)}% מחשבון המסחר` : "ללא יתרה";
@@ -1486,7 +1496,7 @@ function formatSignedMoneyAndPercent(value, percent) {
     maximumFractionDigits: 2,
     useGrouping: true,
   }).format(Math.abs(amount));
-  return `${sign}₪${formattedAmount}\u00a0·\u00a0${percentage.toFixed(1)}%`;
+  return `${sign}₪${formattedAmount} · ${percentage.toFixed(1)}%`;
 }
 
 function formatSignedMoney(value) {

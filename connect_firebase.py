@@ -47,6 +47,7 @@ DEFAULT_PROFILE = {
     "investment_goal": "long_term_growth",
     "base_currency": "ILS",
     "default_broker": "",
+    "watchlist": [],
 }
 
 
@@ -1050,6 +1051,52 @@ def save_deep_portfolio_analysis(user_id, analysis):
         "last_deep_analysis": analysis,
         "last_deep_analysis_at": firestore.SERVER_TIMESTAMP,
     }, merge=True)
+
+
+def get_open_theses(user_id, limit=20):
+    """Open investment theses for this user (thesis_service owns writes to
+    this collection; this is a read-only accessor for context builders)."""
+    try:
+        query = (
+            db.collection("theses")
+            .where(filter=FieldFilter("user_id", "==", str(user_id)))
+            .where(filter=FieldFilter("status", "==", "open"))
+            .limit(limit)
+        )
+        return [{"id": doc.id, **(doc.to_dict() or {})} for doc in query.stream()]
+    except Exception as exc:
+        print(f"get_open_theses failed for {user_id}: {exc}")
+        return []
+
+
+def get_recent_journal_entries(user_id, limit=20):
+    """Most recent journal_entries for this user, newest first."""
+    try:
+        query = (
+            db.collection("journal_entries")
+            .where(filter=FieldFilter("user_id", "==", str(user_id)))
+            .order_by("timestamp", direction=firestore.Query.DESCENDING)
+            .limit(limit)
+        )
+        return [{"id": doc.id, **(doc.to_dict() or {})} for doc in query.stream()]
+    except Exception as exc:
+        print(f"get_recent_journal_entries failed for {user_id}: {exc}")
+        return []
+
+
+def get_recent_analyses(user_id, limit=10):
+    """Most recent saved analyses (fundamental/deep-portfolio/structured
+    recommendations) for this user, newest first."""
+    try:
+        query = (
+            db.collection("users").document(str(user_id)).collection("analyses")
+            .order_by("created_at", direction=firestore.Query.DESCENDING)
+            .limit(limit)
+        )
+        return [{"id": doc.id, **(doc.to_dict() or {})} for doc in query.stream()]
+    except Exception as exc:
+        print(f"get_recent_analyses failed for {user_id}: {exc}")
+        return []
 
 
 def get_all_users_with_email():

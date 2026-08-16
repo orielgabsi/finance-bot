@@ -1053,6 +1053,30 @@ def save_deep_portfolio_analysis(user_id, analysis):
     }, merge=True)
 
 
+_ALLOWED_JOURNAL_ACTIONS = {
+    "BUY_APPROVED", "BUY_REJECTED", "SELL", "ADD", "REDUCE", "EXIT",
+    "HOLD", "RECOMMENDATION",
+}
+
+
+def add_journal_entry(user_id, action, **fields):
+    """Appends one entry to the journal_entries collection. `fields` should
+    carry whatever snapshot is relevant to this action (e.g. ticker, price,
+    quantity, thesis_id, portfolio_snapshot, recommendation_snapshot,
+    reason) — see thesis_service.py / Finance_bot.py callers for concrete
+    shapes per action type."""
+    if action not in _ALLOWED_JOURNAL_ACTIONS:
+        raise ValueError(f"Unknown journal action: {action}")
+    entry = {
+        "user_id": str(user_id),
+        "action": action,
+        "timestamp": firestore.SERVER_TIMESTAMP,
+        **fields,
+    }
+    db.collection("journal_entries").add(entry)
+    return entry
+
+
 def get_open_theses(user_id, limit=20):
     """Open investment theses for this user (thesis_service owns writes to
     this collection; this is a read-only accessor for context builders)."""

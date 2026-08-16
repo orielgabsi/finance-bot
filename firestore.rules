@@ -231,5 +231,25 @@ service cloud.firestore {
         allow update, delete: if false;
       }
     }
+
+    // Written exclusively by the bot process (Admin SDK, bypasses these
+    // rules) after an /analyze-style recommendation and a manual Approve/
+    // Reject. The dashboard only ever reads its own user's documents.
+    match /theses/{thesisId} {
+      allow read: if signedIn() && ownsTelegramAccount(resource.data.user_id);
+      allow write: if false;
+    }
+
+    match /journal_entries/{entryId} {
+      allow read: if signedIn() && ownsTelegramAccount(resource.data.user_id);
+      allow write: if false;
+    }
+
+    // Short-lived: holds a structured BUY recommendation between being sent
+    // to Telegram and the user tapping Approve/Reject on its inline buttons.
+    match /pending_recommendations/{pendingId} {
+      allow read: if signedIn() && ownsTelegramAccount(resource.data.user_id);
+      allow write: if false;
+    }
   }
 }

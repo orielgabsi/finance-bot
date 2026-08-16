@@ -20,11 +20,14 @@ import chart_service
 import connect_firebase
 import fundamental_service
 import finance_engine
+import portfolio_context
 import portfolio_import
 import portfolio_service
 import price_service
 import savings_service
 import tax_service
+import technical_service
+import thesis_service
 
 # Reuse the same model ai_recommendation.py already uses for the weekly email
 # — one model to track for deprecations instead of two.
@@ -413,6 +416,7 @@ _COMMAND_HANDLER_NAMES = {
     "asset": "financial_asset_command",
     "savings": "savings_command",
     "goal": "goal_command",
+    "recommend": "recommend_command",
 }
 
 
@@ -1636,6 +1640,124 @@ def analyze_step(message):
         args=(message, message.text.strip()),
         daemon=True,
     ).start()
+
+
+def _run_structured_recommendation_for_message(message, ticker):
+    """Builds a structured BUY/WAIT/PASS card (portfolio_context +
+    fundamental_service + technical_service, two-pass verified) and, only
+    for a BUY, attaches Approve/Reject inline buttons. Approve never buys
+    anything — it only records a thesis for manual, ongoing tracking."""
+    uid = get_user_id(message)
+    ticker = ticker.strip().upper()
+    thinking = bot.reply_to(
+        message,
+        f"🧮 בונה המלצה מובנית עבור {ticker}: נתונים פונדמנטליים, טכניים, חדשות וגודל פוזיציה מותאם לתיק שלך...",
+    )
+    markup = None
+    try:
+        context = portfolio_context.build_context(uid)
+        technical = technical_service.get_technical_analysis(ticker)
+        fundamental = fundamental_service.analyze_asset(ticker)
+        market_context = ai_recommendation.search_market_context([(ticker, fundamental.get("name"))])
+        rec = ai_recommendation.generate_structured_recommendation(
+            context, ticker, fundamental, technical, market_context,
+        )
+        connect_firebase.save_fundamental_analysis(uid, {**rec, "type": "structured_recommendation"})
+        card = ai_recommendation.format_structured_recommendation_card(rec)
+        if rec.get("action") == "BUY":
+            pending_id = thesis_service.save_pending_recommendation(uid, rec)
+            markup = types.InlineKeyboardMarkup()
+            markup.row(
+                types.InlineKeyboardButton("✅ Approve BUY", callback_data=f"rec_approve:{pending_id}"),
+                types.InlineKeyboardButton("❌ Reject", callback_data=f"rec_reject:{pending_id}"),
+            )
+    except Exception as e:
+        card = f"❌ לא הצלחתי להכין המלצה מובנית: {_safe_error(e)}"
+    try:
+        bot.delete_message(message.chat.id, thinking.message_id)
+    except Exception:
+        pass
+    bot.send_message(message.chat.id, card, reply_markup=markup if markup else main_menu())
+
+
+@bot.message_handler(commands=["recommend"])
+def recommend_command(message):
+    if not _require_auth(message):
+        return
+    args = message.text.split(maxsplit=1) if (message.text or "").startswith("/") else []
+    if len(args) == 2 and args[1].strip():
+        threading.Thread(
+            target=_run_structured_recommendation_for_message,
+            args=(message, args[1].strip()),
+            daemon=True,
+        ).start()
+        return
+    msg = bot.reply_to(message, "עבור איזה טיקר להכין המלצה מובנית (BUY/WAIT/PASS)? למשל AAPL.")
+    bot.register_next_step_handler(msg, recommend_step)
+
+
+def recommend_step(message):
+    if _redirect_if_menu_action(message):
+        return
+    threading.Thread(
+        target=_run_structured_recommendation_for_message,
+        args=(message, message.text.strip()),
+        daemon=True,
+    ).start()
+
+
+@bot.callback_query_handler(
+    func=lambda call: call.data.startswith("rec_approve:") or call.data.startswith("rec_reject:")
+)
+def handle_structured_recommendation_callback(call):
+    """Approve only records a thesis for tracking — it never places a trade.
+    Reject just logs the decision. Both remove the inline buttons afterward
+    so the same recommendation can't be actioned twice."""
+    uid = str(call.from_user.id)
+    action, _, pending_id = call.data.partition(":")
+    pending = thesis_service.get_pending_recommendation(pending_id)
+    if not pending or pending.get("user_id") != uid or pending.get("status") != "pending":
+        bot.answer_callback_query(call.id, "ההמלצה כבר טופלה או שפג תוקפה.")
+        return
+    recommendation = pending.get("recommendation") or {}
+    try:
+        if action == "rec_approve":
+            context = portfolio_context.build_context(uid)
+            thesis = thesis_service.create_thesis(uid, recommendation, context)
+            connect_firebase.add_journal_entry(
+                uid, "BUY_APPROVED",
+                ticker=recommendation.get("ticker"),
+                thesis_id=thesis.get("id"),
+                price=recommendation.get("current_price"),
+                position_size_ils=recommendation.get("position_size_ils"),
+                recommendation_snapshot=recommendation,
+                portfolio_snapshot=context,
+                risk_profile_snapshot=context.get("risk_profile"),
+            )
+            thesis_service.resolve_pending_recommendation(pending_id, "approved")
+            bot.answer_callback_query(call.id, "אושר ✅")
+            confirmation = (
+                f"✅ אושר — נוצר תיעוד (thesis) עבור {recommendation.get('ticker')} למעקב.\n"
+                "⚠️ לא בוצעה כל קנייה בפועל. יש לבצע את הקנייה ידנית אצל הברוקר, "
+                "ואז לתעד אותה בבוט (למשל דרך ➕ קניה חדשה)."
+            )
+        else:
+            connect_firebase.add_journal_entry(
+                uid, "BUY_REJECTED",
+                ticker=recommendation.get("ticker"),
+                recommendation_snapshot=recommendation,
+            )
+            thesis_service.resolve_pending_recommendation(pending_id, "rejected")
+            bot.answer_callback_query(call.id, "נדחה ❌")
+            confirmation = f"❌ ההמלצה עבור {recommendation.get('ticker')} נדחתה."
+    except Exception as e:
+        bot.answer_callback_query(call.id, "שגיאה בעיבוד הבקשה.")
+        confirmation = f"⚠️ אירעה שגיאה: {_safe_error(e)}"
+    try:
+        bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=None)
+    except Exception:
+        pass
+    bot.send_message(call.message.chat.id, confirmation)
 
 
 def _build_deep_portfolio_analysis(uid):

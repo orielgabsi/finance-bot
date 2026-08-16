@@ -759,6 +759,17 @@ def _finish_buy(message, ticker, qty, price):
     except ValueError as e:
         bot.reply_to(message, f"❌ {html.escape(str(e))}", reply_markup=main_menu())
         return
+    try:
+        matching_theses = [
+            thesis for thesis in connect_firebase.get_open_theses(uid)
+            if str(thesis.get("ticker", "")).upper() == ticker
+        ]
+        if matching_theses:
+            connect_firebase.add_journal_entry(
+                uid, "ADD", ticker=ticker, quantity=qty, price=price, thesis_id=matching_theses[0].get("id"),
+            )
+    except Exception as exc:
+        print(f"journal ADD failed for {uid}/{ticker}: {_safe_error(exc)}")
     _refresh_valuation_snapshot_async(uid)
     currency = "₪" if finance_engine.has_known_instrument(ticker) else "במטבע המסחר"
     bot.reply_to(message, f"✅ נרשם: {qty} {ticker} במחיר {displayed_price:,.4f} {currency}", reply_markup=main_menu())
@@ -952,6 +963,30 @@ def _prepare_sell_confirm(message, ticker, qty, price):
     bot.register_next_step_handler(msg, _finish_sell, ticker, qty, price)
 
 
+def _journal_sell(uid, ticker, qty, price, existing_before, gain=None):
+    """Logs a completed sale. If the ticker has an open thesis, logs
+    REDUCE/EXIT instead of a plain SELL and closes the thesis on a full
+    exit — never on a partial sell, since the position still exists."""
+    ticker = str(ticker).strip().upper()
+    remaining_qty = float((existing_before or {}).get("quantity", 0) or 0) - float(qty)
+    matching_theses = [
+        thesis for thesis in connect_firebase.get_open_theses(uid)
+        if str(thesis.get("ticker", "")).upper() == ticker
+    ]
+    if matching_theses:
+        thesis = matching_theses[0]
+        if remaining_qty <= 1e-9:
+            thesis_service.close_thesis(thesis["id"], reason="Sold full position")
+            action = "EXIT"
+        else:
+            action = "REDUCE"
+        connect_firebase.add_journal_entry(
+            uid, action, ticker=ticker, quantity=qty, price=price, gain=gain, thesis_id=thesis.get("id"),
+        )
+    else:
+        connect_firebase.add_journal_entry(uid, "SELL", ticker=ticker, quantity=qty, price=price, gain=gain)
+
+
 def _finish_sell(message, ticker, qty, price):
     if _redirect_if_menu_action(message):
         return
@@ -968,6 +1003,10 @@ def _finish_sell(message, ticker, qty, price):
     except ValueError as e:
         bot.reply_to(message, f"❌ {html.escape(_safe_error(e))}", reply_markup=main_menu())
         return
+    try:
+        _journal_sell(uid, ticker, qty, price, existing, gain=result["gain"])
+    except Exception as exc:
+        print(f"journal_sell failed for {uid}/{ticker}: {_safe_error(exc)}")
     _refresh_valuation_snapshot_async(uid)
     bot.reply_to(
         message,
@@ -1131,6 +1170,10 @@ def _finish_sell_all(message, sells):
             connect_firebase.record_sell(uid, ticker, qty, price)
         except ValueError:
             continue  # holding changed since the quote — skip it, don't fail the whole batch
+        try:
+            _journal_sell(uid, ticker, qty, price, existing, gain=result["gain"])
+        except Exception as exc:
+            print(f"journal_sell failed for {uid}/{ticker}: {_safe_error(exc)}")
         sold.append(ticker)
         total_cost += result["cost"]
         total_proceeds += result["proceeds"]
@@ -1663,6 +1706,12 @@ def _run_structured_recommendation_for_message(message, ticker):
             context, ticker, fundamental, technical, market_context,
         )
         connect_firebase.save_fundamental_analysis(uid, {**rec, "type": "structured_recommendation"})
+        try:
+            connect_firebase.add_journal_entry(
+                uid, "RECOMMENDATION", ticker=ticker, recommended_action=rec.get("action"), recommendation_snapshot=rec,
+            )
+        except Exception as exc:
+            print(f"journal RECOMMENDATION failed for {uid}/{ticker}: {_safe_error(exc)}")
         card = ai_recommendation.format_structured_recommendation_card(rec)
         if rec.get("action") == "BUY":
             pending_id = thesis_service.save_pending_recommendation(uid, rec)

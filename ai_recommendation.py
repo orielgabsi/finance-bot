@@ -399,7 +399,10 @@ def _format_price(value, currency=None) -> str:
     if value is None:
         return "אין נתון"
     suffix = f" {currency}" if currency else ""
-    return f"{float(value):,.2f}{suffix}"
+    try:
+        return f"{float(value):,.2f}{suffix}"
+    except (TypeError, ValueError):
+        return "אין נתון"
 
 
 def _entry_guidance_section(analysis: dict) -> str:
@@ -635,6 +638,237 @@ def format_deep_portfolio_report(result: dict, analyzed_count: int, failed_symbo
         "",
         "✓ ההמלצה נבדקה מחדש מול כל הנתונים על ידי מעבר AI שני.",
         "הערכה לימודית בלבד, לא ייעוץ השקעות.",
+    ] if part)
+
+
+_ALLOWED_STRUCTURED_ACTIONS = {"BUY", "WAIT", "PASS"}
+
+
+def _coerce_number(value):
+    """A reasoning model occasionally returns a number as a malformed string
+    (e.g. two figures concatenated with no separator). Never let a value that
+    doesn't parse cleanly as a single float reach a formatter/consumer."""
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    try:
+        return float(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def _coerce_price_pair(value):
+    """Validates a [low, high] pair; returns [None, None] for anything that
+    isn't cleanly a 2-element numeric sequence rather than guessing/splitting
+    a malformed value — a schema-integrity check the two-pass text verifier
+    doesn't enforce on its own."""
+    if isinstance(value, (list, tuple)) and len(value) == 2:
+        low, high = _coerce_number(value[0]), _coerce_number(value[1])
+        if low is not None and high is not None:
+            return [low, high]
+    return [None, None]
+
+
+def generate_structured_recommendation(
+    context: dict,
+    ticker: str,
+    fundamental_analysis: dict,
+    technical_analysis: dict,
+    market_context: str,
+    position_type: str = "Core",
+) -> dict:
+    """Structured BUY/WAIT/PASS recommendation for exactly one ticker.
+
+    Grounded in portfolio_context.build_context() output plus
+    fundamental_service/technical_service data. position_size_ils is
+    constrained to portfolio_context.compute_position_size_range()'s
+    deterministic range — the AI may pick a number inside it, but the range
+    itself, and the final clamp below, are never AI-generated. Runs the same
+    two-pass verification pattern as every other recommendation in this
+    module.
+    """
+    import portfolio_context  # local import: avoids a module-load cycle if
+                               # portfolio_context ever needs formatting helpers from here
+
+    ticker = str(ticker or "").strip().upper()
+    sizing = portfolio_context.compute_position_size_range(context, ticker, position_type)
+    existing_holding = (context.get("holdings") or {}).get(ticker)
+    open_theses_for_ticker = [
+        thesis for thesis in (context.get("open_theses") or [])
+        if str(thesis.get("ticker", "")).upper() == ticker
+    ]
+
+    facts_payload = {
+        "ticker": ticker,
+        "risk_profile": context.get("risk_profile"),
+        "cash": context.get("cash"),
+        "account_total_value": context.get("account_total_value"),
+        "allocation": context.get("allocation"),
+        "sector_exposure": context.get("sector_exposure"),
+        "existing_holding": existing_holding,
+        "open_theses_for_ticker": open_theses_for_ticker,
+        "allowed_position_size": sizing,
+        "fundamental_analysis": fundamental_analysis,
+        "technical_analysis": technical_analysis,
+    }
+    trusted_facts = json.dumps(facts_payload, ensure_ascii=False, default=str)
+
+    prompt = f"""You are a disciplined portfolio-manager assistant producing a
+STRUCTURED recommendation for exactly ONE ticker. Use ONLY the trusted facts
+and news below — never invent a price, metric, or holding.
+
+allowed_position_size in the trusted facts was computed DETERMINISTICALLY by
+the system, not by you. You may only choose a position_size_ils inside
+[min_ils, max_ils] from allowed_position_size, and ONLY if
+allowed_position_size.position_size_status == "OK". Otherwise action must not
+be BUY and position_size_ils must be 0.
+
+Investor profile: {_profile_summary(context.get("profile"))}
+TRUSTED FACTS: {trusted_facts}
+RECENT NEWS: {market_context}
+
+Return JSON only with exactly these keys:
+{{
+  "ticker": "{ticker}",
+  "action": "BUY|WAIT|PASS",
+  "position_type": "{position_type}",
+  "horizon": "short label, e.g. '5+ years'",
+  "current_price": 0,
+  "entry_range": [0, 0],
+  "position_size_ils": 0,
+  "position_size_range": [0, 0],
+  "reasoning": "2-4 concise Hebrew sentences",
+  "fundamental_analysis": {{}},
+  "technical_analysis": {{}},
+  "risk": "Hebrew sentence",
+  "exit_condition": "Hebrew sentence describing what would invalidate this idea",
+  "catalysts": ["Hebrew catalyst"],
+  "bear_case": "Hebrew sentence",
+  "confidence": 0,
+  "score": 0
+}}
+Only BUY, WAIT or PASS are valid actions — never any other word. current_price
+and entry_range must be taken from the trusted facts, never invented.
+fundamental_analysis/technical_analysis in your answer should echo the
+relevant trusted-fact subsets, not new numbers. confidence and score are 0-100
+integers."""
+
+    first = _call_groq_json_with_retry(
+        prompt,
+        validate=lambda v: str(v.get("action")) in _ALLOWED_STRUCTURED_ACTIONS,
+    )
+
+    verifier_prompt = f"""You are the final auditor for a structured BUY/WAIT/PASS
+recommendation. Re-check every field against the trusted facts:
+1) action must be exactly one of BUY, WAIT, PASS.
+2) current_price and entry_range must match the trusted facts exactly.
+3) position_size_ils must lie within allowed_position_size (trusted facts) —
+   if allowed_position_size.position_size_status is not "OK", action must not
+   be BUY and position_size_ils must be 0.
+4) entry_range, position_size_range and reasoning must not contradict each
+   other or the trusted facts.
+5) Do not introduce any fact, price, or metric absent from the trusted facts.
+Correct anything wrong and return the COMPLETE corrected JSON object with the
+exact same keys, plus "verified": true and "verification_notes": ["short
+Hebrew note"].
+
+TRUSTED FACTS: {trusted_facts}
+RECENT NEWS: {market_context}
+FIRST ANALYST OUTPUT: {json.dumps(first, ensure_ascii=False)}"""
+
+    required = {"ticker", "action", "position_size_ils", "entry_range", "reasoning"}
+    checked = _call_groq_json_with_retry(
+        verifier_prompt, model=GROQ_VERIFIER_MODEL,
+        validate=lambda v: required.issubset(v) and str(v.get("action")) in _ALLOWED_STRUCTURED_ACTIONS,
+    )
+    checked["verified"] = True
+    try:
+        checked["confidence"] = max(0, min(100, int(checked.get("confidence", 0) or 0)))
+    except (TypeError, ValueError):
+        checked["confidence"] = 0
+    try:
+        checked["score"] = max(0, min(100, int(checked.get("score", 0) or 0)))
+    except (TypeError, ValueError):
+        checked["score"] = 0
+
+    # Deterministic guardrails — enforced regardless of what the AI said,
+    # since the AI must never be trusted to size or gate a position itself.
+    if checked.get("action") not in _ALLOWED_STRUCTURED_ACTIONS:
+        checked["action"] = "PASS"
+    if sizing.get("position_size_status") != "OK":
+        if checked.get("action") == "BUY":
+            checked["action"] = "WAIT"
+        checked["position_size_ils"] = 0
+    elif checked.get("action") == "BUY":
+        try:
+            size = float(checked.get("position_size_ils") or 0)
+        except (TypeError, ValueError):
+            size = 0.0
+        checked["position_size_ils"] = round(min(max(size, sizing["min_ils"]), sizing["max_ils"]), 2)
+    else:
+        checked["position_size_ils"] = 0
+
+    checked["ticker"] = ticker
+    checked["entry_range"] = _coerce_price_pair(checked.get("entry_range"))
+    checked["current_price"] = _coerce_number(checked.get("current_price"))
+    checked["position_size_range"] = [sizing.get("min_ils"), sizing.get("max_ils")]
+    checked["allowed_position_size_status"] = sizing.get("position_size_status")
+    checked["disclaimer"] = "הערכה לימודית בלבד, לא ייעוץ השקעות. לא בוצעה כל פעולה אוטומטית."
+    return checked
+
+
+_STRUCTURED_ACTION_LABELS = {"BUY": "🟢 BUY", "WAIT": "🟡 WAIT", "PASS": "🔴 PASS"}
+
+
+def format_structured_recommendation_card(rec: dict) -> str:
+    """Telegram/dashboard-ready card for one structured recommendation."""
+    action = str(rec.get("action") or "WAIT")
+    entry_range = rec.get("entry_range") or [None, None]
+    entry_low = entry_range[0] if len(entry_range) > 0 else None
+    entry_high = entry_range[1] if len(entry_range) > 1 else None
+    size_ils = rec.get("position_size_ils")
+    size_line = (
+        f"₪{float(size_ils):,.0f}" if size_ils else
+        f"אין המלצת גודל (סטטוס: {rec.get('allowed_position_size_status', 'לא ידוע')})"
+    )
+    catalysts = "\n".join(f"• {item}" for item in (rec.get("catalysts") or [])[:4])
+    return "\n".join(part for part in [
+        f"📊 {rec.get('ticker', '')}",
+        "",
+        f"{_STRUCTURED_ACTION_LABELS.get(action, action)}",
+        str(rec.get("position_type") or ""),
+        f"אופק: {rec.get('horizon', '')}",
+        "",
+        f"מחיר נוכחי: {_format_price(rec.get('current_price'))}",
+        "",
+        "טווח כניסה:",
+        f"{_format_price(entry_low)} - {_format_price(entry_high)}",
+        "",
+        "גודל פוזיציה מוצע:",
+        size_line,
+        "",
+        f"ציון: {rec.get('score', 0)}/100 · ביטחון: {rec.get('confidence', 0)}%",
+        "",
+        "למה:",
+        str(rec.get("reasoning") or ""),
+        "",
+        "סיכון:",
+        str(rec.get("risk") or ""),
+        "",
+        "תנאי יציאה:",
+        str(rec.get("exit_condition") or ""),
+        "",
+        "קטליזטורים:" if catalysts else "",
+        catalysts,
+        "",
+        "תרחיש דובי:",
+        str(rec.get("bear_case") or ""),
+        "",
+        "✓ ההמלצה נבדקה מחדש על ידי מעבר AI שני.",
+        str(rec.get("disclaimer") or "הערכה לימודית בלבד, לא ייעוץ השקעות."),
     ] if part)
 
 

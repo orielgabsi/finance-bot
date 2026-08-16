@@ -52,6 +52,60 @@ def _build_asset_class_exposure(valuation: dict) -> dict:
     }
 
 
+# Deterministic concentration limits per risk profile and position type —
+# expressed as a max share of account_total_value a single ticker may reach.
+# The AI recommendation engine may only suggest a size inside the resulting
+# range; it must never invent position_size_ils itself.
+_CONCENTRATION_LIMITS = {
+    "conservative": {"Core": 0.05, "Satellite": 0.02},
+    "balanced": {"Core": 0.08, "Satellite": 0.03},
+    "aggressive": {"Core": 0.12, "Satellite": 0.05},
+}
+_DEFAULT_CONCENTRATION_LIMITS = {"Core": 0.08, "Satellite": 0.03}
+
+
+def compute_position_size_range(context: dict, ticker: str, position_type: str = "Core") -> dict:
+    """Deterministic min/max/suggested position size in the account's base
+    currency, computed from portfolio value, available cash, risk profile,
+    existing exposure to this ticker and a concentration cap for the
+    position type. Never returns a size when the inputs required to size
+    safely aren't available — callers must not substitute a guessed number
+    for position_size_status != "OK"."""
+    portfolio_value = float(context.get("account_total_value") or 0.0)
+    cash = float(context.get("cash") or 0.0)
+    risk_profile = str(context.get("risk_profile") or "balanced")
+    position_type = position_type if position_type in ("Core", "Satellite") else "Core"
+    ticker = str(ticker or "").strip().upper()
+
+    if portfolio_value <= 0:
+        return {"position_size_status": "INSUFFICIENT_DATA", "min_ils": None, "max_ils": None, "suggested_ils": None}
+
+    limits = _CONCENTRATION_LIMITS.get(risk_profile, _DEFAULT_CONCENTRATION_LIMITS)
+    concentration_cap_pct = limits[position_type]
+    existing_allocation_pct = (context.get("allocation") or {}).get(ticker, 0.0) / 100
+    remaining_room_pct = max(0.0, concentration_cap_pct - existing_allocation_pct)
+
+    base = {
+        "concentration_cap_pct": round(concentration_cap_pct * 100, 2),
+        "existing_allocation_pct": round(existing_allocation_pct * 100, 2),
+    }
+
+    if remaining_room_pct <= 0:
+        return {**base, "position_size_status": "AT_CONCENTRATION_LIMIT", "min_ils": 0.0, "max_ils": 0.0, "suggested_ils": 0.0}
+
+    max_ils = min(portfolio_value * remaining_room_pct, cash)
+    if max_ils <= 0:
+        return {**base, "position_size_status": "INSUFFICIENT_CASH", "min_ils": 0.0, "max_ils": 0.0, "suggested_ils": 0.0}
+
+    return {
+        **base,
+        "position_size_status": "OK",
+        "min_ils": round(max_ils * 0.4, 2),
+        "max_ils": round(max_ils, 2),
+        "suggested_ils": round(max_ils * 0.7, 2),
+    }
+
+
 def build_context(user_id: str) -> dict:
     """Returns a unified snapshot of everything an AI prompt needs to know
     about this user. Falls back to a live valuation if no cached one exists
